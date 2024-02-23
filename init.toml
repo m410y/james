@@ -1,0 +1,7 @@
+p4p_folder = "../../p4p"
+p4p_file = "20240223_LaB6.p4p"
+sfrm_folder = "../../sfrm/20240223_LaB6_129f_Bond_Fridels"
+sfrm_files =  [ "mo_LaB6_2_m8_m3_friedel_129f_P96p95_03_0001.sfrm",
+                "mo_LaB6_2_m8_m3_friedel_129f_P96p95_04_0001.sfrm" ]
+d = 128.533
+a = 4.15743
