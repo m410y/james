@@ -1,4 +1,5 @@
 from goniometer import *
+from crystal import *
 
 import numpy as np
 from numpy import arctan2, arccos, arcsin, sqrt, fabs, array, pi
@@ -16,8 +17,7 @@ def omega_to_reflection(plane, wl):
 
 
 def to_reflection(plane, G: Goniometer, S: Xsource, wl="Ka1") -> list:
-    if fabs(0.5*S.wl[wl]*norm(plane)) > 1:
-        print("Too high wavelength")
+    if fabs(0.5*S.wl[wl]*norm(plane)) > 1.0:
         return []
     
     tth = 2*arcsin(0.5*S.wl[wl]*norm(plane))
@@ -53,3 +53,7 @@ def assume_hkl(orient, G: Goniometer, S: Xsource):
 def fix_orient(orient, a):
     old_s = np.sqrt(np.sum(np.diag(np.dot(orient.T, orient)))/3)
     return orient / (a*old_s)
+
+
+def combine_cell(atoms, coords):
+    return (atoms_to_form_factor(atoms), array(coords))

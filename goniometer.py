@@ -26,7 +26,6 @@ class Goniometer:
         self.omega = omega
         self.phi = phi
         self.tth_max = 1.6920967098085025
-        #self.delta = 0.17453292519943295
         self.delta = 0.7543313027119493 + 0.035 # +2deg
 
     def rot(self, vec):

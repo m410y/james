@@ -27,14 +27,12 @@ def fit_func(x, y, params):
     return res
 
 
-def fit_image(image, peaks, verbose=1):
+def fit_image(image, peaks, dx=32, dy=32, noise=64, verbose=1):
     x1, y1 = peaks[0]
     x2, y2 = peaks[1]
 
     x0 = int(2/3*x1+1/3*x2)
     y0 = int(2/3*y1+1/3*y2)
-    dx = 32
-    dy = 32
     fit_data = image[y0-dy:y0+dy, x0-dx:x0+dx]
 
     if verbose > 0:
@@ -42,12 +40,11 @@ def fit_image(image, peaks, verbose=1):
         plt.show()
 
     x_diff = fabs(x2 - x1)
-    noise0 = 64
     A0 = np.max(fit_data)
     w0 = x_diff / 4
-    mu0 = 0.1
+    mu0 = 0.0
     
-    guess = (noise0, 2*A0, x1, w0, y1, w0, mu0, A0, x2, w0, y2, w0, mu0)
+    guess = (noise, 2*A0, x1, w0, y1, w0, mu0, A0, x2, w0, y2, w0, mu0)
     left_bounds = (0, 0, x0-dx, 0, y0-dy, 0, 0, 0, x0-dx, 0, y0-dy, 0, 0)
     right_bounds = (A0, 2*A0, x0+dx, x_diff, y0+dy, x_diff, 1, A0, x0+dx, x_diff, y0+dy, x_diff, 1)
     x_grid = arange(x0-dx, x0 + dx, dtype=float)

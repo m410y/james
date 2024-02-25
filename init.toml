@@ -1,7 +1,26 @@
-p4p_folder = "../../p4p"
-p4p_file = "20240223_LaB6.p4p"
-sfrm_folder = "../../sfrm/20240223_LaB6_129f_Bond_Fridels"
-sfrm_files =  [ "mo_LaB6_2_m8_m3_friedel_129f_P96p95_03_0001.sfrm",
-                "mo_LaB6_2_m8_m3_friedel_129f_P96p95_04_0001.sfrm" ]
+
+mode = "suppose"
+
+p4p_folder = "D:/data/p4p"
+p4p_file = "Si_small.p4p"
+sfrm_folder = "../20240223_LaB6_m8_3_2_129f_Bond"
+sfrm_files =  [ "mo_LaB6_m8_3_2_129f_PM96p95_03_0001.sfrm",
+                "mo_LaB6_m8_3_2_129f_PM96p95_04_0001.sfrm" ]
+
+check = true
+#peaks = [[389, 503], [402, 503]]
+hkl_max = 20
+tth_min = 90.0
+tth_max = 100.0
 d = 128.533
-a = 4.15743
+#a = 4.15743
+
+atoms = ["Si", "Si", "Si", "Si", "Si", "Si", "Si", "Si"]
+coords = [  [0.0, 0.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [0.0, 0.5, 0.0],
+            [0.0, 0.0, 0.5],
+            [0.25, 0.25, 0.25],
+            [0.75, 0.25, 0.25],
+            [0.25, 0.75, 0.25],
+            [0.25, 0.25, 0.75]]
