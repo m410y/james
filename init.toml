@@ -2,25 +2,29 @@
 mode = "suppose"
 
 p4p_folder = "D:/data/p4p"
-p4p_file = "Si_small.p4p"
-sfrm_folder = "../20240223_LaB6_m8_3_2_129f_Bond"
-sfrm_files =  [ "mo_LaB6_m8_3_2_129f_PM96p95_03_0001.sfrm",
-                "mo_LaB6_m8_3_2_129f_PM96p95_04_0001.sfrm" ]
+p4p_file = "LaB6.p4p"
+sfrm_folder = "td"
+sfrm_files =  [ "7.sfrm", "8.sfrm" ]
 
-check = true
+drawing = false
+check = false
 #peaks = [[389, 503], [402, 503]]
-hkl_max = 20
+hkl_max = 10
 tth_min = 90.0
 tth_max = 100.0
+x_lims = [360, 420]
+y_lims = [490, 520]
+a = 4.156916
 d = 128.533
-#a = 4.15743
-
-atoms = ["Si", "Si", "Si", "Si", "Si", "Si", "Si", "Si"]
-coords = [  [0.0, 0.0, 0.0],
-            [0.5, 0.0, 0.0],
-            [0.0, 0.5, 0.0],
-            [0.0, 0.0, 0.5],
-            [0.25, 0.25, 0.25],
-            [0.75, 0.25, 0.25],
-            [0.25, 0.75, 0.25],
-            [0.25, 0.25, 0.75]]
+sigma = 2.0
+noise = 200
+wl = [0.70931715, 0.713607]
+chi = 54.7112
+tth_lim = 100.0
+tth_om_delta = 43.22
+om_scan_range = 4.0
+rows = 1024
+cols = 786
+xc = 395.35
+yc = 504.5
+px_size = 0.135
