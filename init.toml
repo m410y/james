@@ -4,11 +4,13 @@ mode = "suppose"
 p4p_folder = "D:/data/p4p"
 p4p_file = "LaB6.p4p"
 sfrm_folder = "td"
-sfrm_files =  [ "7.sfrm", "8.sfrm" ]
+sfrm_files =  [ "1.sfrm",
+                "2.sfrm" ]
 
 drawing = false
 check = false
 shift_corr = false
+logging = false
 #peaks = [[389, 503], [402, 503]]
 hkl_max = 10
 tth_min = 90.0

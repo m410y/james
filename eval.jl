@@ -2,6 +2,7 @@ using StaticArrays
 using LinearAlgebra
 using Rotations
 using TOML
+using Printf
 
 include("parse.jl")
 
@@ -10,13 +11,14 @@ init = TOML.parsefile("init.toml")
 
 a, U = p4p_orient("$(init["p4p_folder"])/$(init["p4p_file"])")
 "a" in keys(init) && (a = init["a"])
+@printf "Sample: %s\n" split(init["p4p_file"], ".")[1]
 
 meta = sfrm_meta("$(init["sfrm_folder"])/$(init["sfrm_files"][1])")
-image = sfrm_image("$(init["sfrm_folder"])/".*init["sfrm_files"])
 
 drawing = init["drawing"]
 check = init["check"]
 shift_corr = init["shift_corr"]
+logging= init["logging"]
 
 wl = init["wl"]
 d = meta["d"]
@@ -30,12 +32,13 @@ xc = init["xc"]
 yc = init["yc"]
 px_size = init["px_size"]
 
-print("d tth omega phi\n")
-print("$d $(rad2deg(tth)) $(rad2deg(omega)) $(rad2deg(phi))\n")
+hank(ang) = rad2deg(rem2pi(ang, RoundNearest))
+@printf "   d    tth   omega    phi\n"
+@printf "%4.0lf %6.2lf  %6.2lf %6.2lf\n" d hank(tth) hank(omega) hank(phi)
 
 ray = [1, 0, 0]
 hkl = round.(Int, U'RotZXZ(phi, chi, -omega)*(RotZ(tth)*ray - ray)*a/wl[1])
-print("h k l: $hkl\n")
+@printf "h k l: %d %d %d\n" hkl[1] hkl[2] hkl[3] 
 
 s = RotXZ(-chi, -phi)*U*hkl/a
 
@@ -54,19 +57,20 @@ peaks = "peaks" in keys(init) ? init["peaks"] : [coords(ray/λ + RotZ(true_omega
 
 x_diap = init["x_lims"][1]:init["x_lims"][2]
 y_diap = init["y_lims"][1]:init["y_lims"][2]
+image = sfrm_image("$(init["sfrm_folder"])/".*init["sfrm_files"])
 fit_data = image[y_diap, x_diap]
 
-print("Ka1: $(peaks[1])\n")
-print("Ka2: $(peaks[2])\n")
+@printf "Pred. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2]
+@printf "Pred. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2]
 
 if drawing & check
     using Plots
 
     heatmap(x_diap, y_diap, fit_data, aspect_ratio=:equal)
     savefig("plot.png")
-
-    exit()
 end
+
+check && exit()
 
 function gauss_2D(t::Matrix, p::Vector{Float64})::Vector{Float64}
     A, x0, y0, σx, σy = p
@@ -98,31 +102,36 @@ if shift_corr
     xy_shift = 2*(xy_mesh'xcorr_data./sum(xcorr_data) - [mean(x_diap), mean(y_diap)])
     for i in eachindex(peaks); peaks[i] -= xy_shift; end
 
-    print("Corrected Ka1: $(peaks[1])\n")
-    print("Corrected Ka2: $(peaks[2])\n")
+    @printf "Corr. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2]
+    @printf "Corr. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2]
 end
 
 fit = curve_fit(fit_func, xy_mesh, vec(fit_data), p0)
 param = fit.param
 stdev = estimate_errors(fit)
+@printf "Params:      Int      x0      y0    σx    σy\n"
+@printf "Fit. Ka1: %6.0lf  %.2f  %.2f  %.2f  %.2f\n" param[2] param[3] param[4] param[5] param[6]
+@printf "Fit. Ka2: %6.0lf  %.2f  %.2f  %.2f  %.2f\n" param[7] param[8] param[9] param[10] param[11]
 
-file = open("fit_log.txt", "a")
-write(file, "$(split(init["p4p_file"], ".")[1])\n")
-for idx in hkl; write(file, "$idx  "); end
-write(file, "\n")
-tth, phi, omega = @. rad2deg(rem2pi([tth, phi, omega], RoundNearest))
-write(file, "$d\t$tth\t$phi\t$omega\n")
-write(file, "$(fit.param[1])\n")
-for g_diap in [2:6, 7:11]
-    for par in param[g_diap]; write(file, "$par\t"); end
-    write(file, "\n")  
-end
-for g_diap in [2:6, 7:11]
-    for err in stdev[g_diap]; write(file, "$err\t"); end
+if logging
+    file = open("fit_log.txt", "a")
     write(file, "\n")
+    write(file, "$(split(init["p4p_file"], ".")[1])\n")
+    for idx in hkl; write(file, "$idx  "); end
+    write(file, "\n")
+    tth, phi, omega = @. rad2deg(rem2pi([tth, phi, omega], RoundNearest))
+    write(file, "$d\t$tth\t$phi\t$omega\n")
+    write(file, "$(fit.param[1])\n")
+    for g_diap in [2:6, 7:11]
+        for par in param[g_diap]; write(file, "$par\t"); end
+        write(file, "\n")  
+    end
+    for g_diap in [2:6, 7:11]
+        for err in stdev[g_diap]; write(file, "$err\t"); end
+        write(file, "\n")
+    end
+    close(file)
 end
-write(file, "\n")
-close(file)
 
 if drawing
     using Plots
