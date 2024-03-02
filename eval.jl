@@ -2,7 +2,6 @@ using StaticArrays
 using LinearAlgebra
 using Rotations
 using TOML
-using DSP
 
 include("parse.jl")
 
@@ -17,6 +16,8 @@ image = sfrm_image("$(init["sfrm_folder"])/".*init["sfrm_files"])
 
 drawing = init["drawing"]
 check = init["check"]
+shift_corr = init["shift_corr"]
+
 wl = init["wl"]
 d = meta["d"]
 chi = meta["chi"]
@@ -79,14 +80,31 @@ function fit_func(t::Matrix, p::Vector{Float64})::Vector{Float64}
 end
 
 using LsqFit
+
 xy_mesh = hcat(vec([x for y=y_diap, x=x_diap]), vec([y for y=y_diap, x=x_diap]))
+
 A0 = findmax(fit_data)[1]
 σ0 = init["sigma"]
 noise0 = init["noise"]
 g1 = [A0, peaks[1][1], peaks[1][2], σ0, σ0]
 g2 = [A0/2, peaks[2][1], peaks[2][2], σ0, σ0]
 p0 = [noise0; g1; g2]
+
+if shift_corr
+    using DSP
+    using Statistics
+
+    xcorr_data = xcorr(fit_func(xy_mesh, p0), vec(fit_data))[round(Int, length(fit_data)/2)+1 : round(Int, 3*length(fit_data)/2)+1]
+    xy_shift = 2*(xy_mesh'xcorr_data./sum(xcorr_data) - [mean(x_diap), mean(y_diap)])
+    for i in eachindex(peaks); peaks[i] -= xy_shift; end
+
+    print("Corrected Ka1: $(peaks[1])\n")
+    print("Corrected Ka2: $(peaks[2])\n")
+end
+
 fit = curve_fit(fit_func, xy_mesh, vec(fit_data), p0)
+param = fit.param
+stdev = estimate_errors(fit)
 
 file = open("fit_log.txt", "a")
 write(file, "$(split(init["p4p_file"], ".")[1])\n")
@@ -95,11 +113,16 @@ write(file, "\n")
 tth, phi, omega = @. rad2deg(rem2pi([tth, phi, omega], RoundNearest))
 write(file, "$d\t$tth\t$phi\t$omega\n")
 write(file, "$(fit.param[1])\n")
-for g in [fit.param[2:6], fit.param[7:11]]
-    for par in g; write(file, "$par\t"); end
+for g_diap in [2:6, 7:11]
+    for par in param[g_diap]; write(file, "$par\t"); end
+    write(file, "\n")  
+end
+for g_diap in [2:6, 7:11]
+    for err in stdev[g_diap]; write(file, "$err\t"); end
     write(file, "\n")
 end
 write(file, "\n")
+close(file)
 
 if drawing
     using Plots
