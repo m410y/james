@@ -1,33 +1,54 @@
-
+### deprecated
 mode = "suppose"
 
+### necessary consts
+wl = [0.70931715, 0.713607]
+
+### p4p file location
 p4p_folder = "D:/data/p4p"
 p4p_file = "LaB6.p4p"
-sfrm_folder = "td"
-sfrm_files =  [ "1.sfrm",
-                "2.sfrm" ]
 
+### lattice param correction
+a = 4.156916
+
+### sfrm files location
+sfrm_folder = "td"
+sfrm_files =  [ "9.sfrm", "10.sfrm" ]
+
+
+### checkboxes
+correct_lattice = true
 drawing = false
 check = false
-shift_corr = false
+shift_corr = true
 logging = false
-#peaks = [[389, 503], [402, 503]]
+
+
+### suppose params
 hkl_max = 10
 tth_min = 90.0
 tth_max = 100.0
+d = 128.533
+om_scan_range = 4.0
+
+
+### eval params
+#peaks = [[389, 503], [402, 503]]
 x_lims = [360, 420]
 y_lims = [490, 520]
-a = 4.156916
-d = 128.533
+xc = 395.50
+yc = 504.13
 sigma = 2.0
 noise = 200
-wl = [0.70931715, 0.713607]
+
+
+### suppose consts
 chi = 54.7112
 tth_lim = 100.0
 tth_om_delta = 43.22
-om_scan_range = 4.0
+
+
+### eval consts
 rows = 1024
 cols = 786
-xc = 395.50
-yc = 504.13
 px_size = 0.135
