@@ -8,6 +8,7 @@ sfrm_files =  [ "7.sfrm", "8.sfrm" ]
 
 drawing = false
 check = false
+shift_corr = false
 #peaks = [[389, 503], [402, 503]]
 hkl_max = 10
 tth_min = 90.0
@@ -25,6 +26,6 @@ tth_om_delta = 43.22
 om_scan_range = 4.0
 rows = 1024
 cols = 786
-xc = 395.35
-yc = 504.5
+xc = 395.50
+yc = 504.13
 px_size = 0.135
