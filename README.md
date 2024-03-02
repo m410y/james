@@ -1,5 +1,11 @@
-Dependencies:
+Conda Packages:
 fabio (sfrm read) : https://github.com/silx-kit/fabio
-scipy (peak fitting)
-tomllib
-numpy
+
+Julia Packages:
+
+PyCall
+Rotations
+StaticArrays
+LinearAlgebra
+LsqFit
+DSP
