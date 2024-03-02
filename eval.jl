@@ -67,7 +67,7 @@ if drawing
     using Plots
 
     heatmap(x_diap, y_diap, fit_data, aspect_ratio=:equal)
-    savefig("plot.png")
+    savefig(joinpath(init["res_folder"], "plot.png"))
 end
 
 check && exit()
@@ -122,7 +122,7 @@ stdev = stderror(fit)
 @printf "Err. Ka2: %6.0lf  %7.3f  %7.3f  %5.3f  %5.3f\n" stdev[7] stdev[8] stdev[9] stdev[10] stdev[11]
 
 if logging
-    file = open("fit_log.txt", "a")
+    file = open(joinpath(init["res_folder"], "fit_log.txt"), "a")
     write(file, "\n")
     write(file, "$(split(init["p4p_file"], ".")[1])\n")
     for idx in hkl; write(file, "$idx  "); end
@@ -145,5 +145,5 @@ if drawing
     using Plots
 
     heatmap(x_diap, y_diap, reshape(fit.resid, size(fit_data)), aspect_ratio=:equal)
-    savefig("resid.png")
+    savefig(joinpath(init["res_folder"], "resid.png"))
 end
