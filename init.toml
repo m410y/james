@@ -1,12 +1,19 @@
 ### necessary consts
 wl = [0.70931715, 0.713607]
 
+### lattice param correction
+#a = 4.156916
+
+
+res_folder = "res"
+
 ### p4p file location
 p4p_folder = "D:\\data\\p4p"
-p4p_file = "LaB6.p4p"
+p4p_file = "YEu_N5.p4p"
 
-### lattice param correction
-a = 4.156916
+### cif file location
+cif_folder = "D:\\data\\XRDA"
+cif_file = "YEu_N5\\YEu_N5.cif"
 
 ### sfrm files location
 sfrm_folder = "D:\\data\\sfrm\\20240217_YEu_N3_Bond_Fridel"
@@ -14,7 +21,7 @@ sfrm_files =  [ "mo_YEu_N3__m4_10_20_andFridels_129f_M97p5_01_0001.sfrm", "mo_YE
 
 
 ### checkboxes
-correct_lattice = true
+correct_lattice = false
 drawing = false
 check = false
 shift_corr = true
