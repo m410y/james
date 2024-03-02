@@ -1,6 +1,3 @@
-### deprecated
-mode = "suppose"
-
 ### necessary consts
 wl = [0.70931715, 0.713607]
 
