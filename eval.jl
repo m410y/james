@@ -3,147 +3,149 @@ using LinearAlgebra
 using Rotations
 using TOML
 using Printf
+using FilePaths
+using Glob
+using LsqFit
+using DSP
+using Statistics
 
 include("parse.jl")
 
 
 init = TOML.parsefile("init.toml")
 
-a, U = p4p_orient(joinpath(init["p4p_folder"], init["p4p_file"]))
+a, U = p4p_orient(init["p4p_file"])
 init["correct_lattice"] && (a = init["a"])
-@printf "Sample: %s\n" split(init["p4p_file"], ".")[1]
-
-meta = sfrm_meta(joinpath(init["sfrm_folder"], init["sfrm_files"][1]))
-
-drawing = init["drawing"]
-check = init["check"]
-shift_corr = init["shift_corr"]
-logging= init["logging"]
+sample_name = split(split(init["p4p_file"], "\\")[end], ".")[1]
+@printf "Sample: %s\n" sample_name
 
 wl = init["wl"]
-d = meta["d"]
-χ = meta["chi"]
-ϕ = meta["phi"]
-ω = meta["omega"]
-θ = meta["tth"]/2
-cols = meta["x_max"]
-rows = meta["y_max"]
+χ = deg2rad(init["chi"])
+ray = [1, 0, 0]
+cols = init["cols"]
+rows = init["rows"]
 xc = init["xc"]
 yc = init["yc"]
 px_size = init["px_size"]
-
-hank(ang) = rad2deg(rem2pi(ang, RoundNearest))
-@printf "   d    2θ   ω    ϕ\n"
-@printf "%4.0lf %6.2lf  %6.2lf %6.2lf\n" d hank(2*θ) hank(ω) hank(ϕ)
-
-ray = [1, 0, 0]
-hkl = round.(Int, U'RotZXZ(ϕ, χ, -ω)*(RotZ(2*θ)*ray - ray)*a/wl[1])
-@printf "h k l: %d %d %d\n" hkl[1] hkl[2] hkl[3] 
-
-s = RotXZ(-χ, -ϕ)*U*hkl/a
-
-function true_ω(λ::Float64)::Float64
-    _ω = atan(s[2], s[1])*[1, 1] - acos(-0.5*λ*norm(s))*[1, -1]
-    Δω = @. abs(rem2pi(_ω - ω, RoundNearest))
-    return Δω[1] < Δω[2] ? _ω[1] : _ω[2]
-end
-
-function coords(v::SVector{3, Float64})::SVector{2, Float64}
-    v = RotZ(-2*θ)*normalize(v)*d/px_size
-    return xc - v[2], yc + v[3]
-end
-
-peaks = "peaks" in keys(init) ? init["peaks"] : [coords(ray/λ + RotZ(true_ω(λ))*s) for λ in wl]
-
 x_diap = init["x_lims"][1]:init["x_lims"][2]
 y_diap = init["y_lims"][1]:init["y_lims"][2]
-image = sfrm_image(joinpath.(init["sfrm_folder"], init["sfrm_files"]))
-fit_data = image[y_diap, x_diap]
+x0 = (init["x_lims"][1] + init["x_lims"][2])/2
+y0 = (init["y_lims"][1] + init["y_lims"][2])/2
+xy_mesh = hcat(vec([x for y=y_diap, x=x_diap]), vec([y for y=y_diap, x=x_diap]))
+σ0 = init["sigma"]
+threshold = init["threshold"]
 
-@printf "Pred. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2]
-@printf "Pred. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2]
+hank(ang) = rad2deg(rem2pi(ang, RoundNearest))
 
-if drawing
-    using Plots
-
-    heatmap(x_diap, y_diap, fit_data, aspect_ratio=:equal)
-    savefig(joinpath(init["res_folder"], "plot.png"))
+experiments = Dict{Tuple{SVector{3, Int}, NTuple{4, Float64}}, Vector{String}}()
+experiment_name = split(init["sfrm_folder"], "\\")[end]
+for path in glob("*.sfrm", init["sfrm_folder"])
+    meta = sfrm_meta(path)
+    d, θ, ω, ϕ = meta["d"], meta["tth"]/2, meta["omega"], meta["phi"]
+    hkl = round.(Int, U'RotZXZ(ϕ, χ, -ω)*(RotZ(2θ)*ray - ray)*a/wl[1])
+    ex_params = hkl, (d, θ, ω, ϕ)
+    ex_params in keys(experiments) || (experiments[ex_params] = [])
+    push!(experiments[ex_params], path)
 end
 
-check && exit()
+function true_ω(s::SVector{3, Float64}, λ::Float64, ω::Float64)::Float64
+    ω_t = atan(s[2], s[1])*[1, 1] - acos(-λ*norm(s)/2)*[1, -1]
+    Δω = @. abs(rem2pi(ω_t - ω, RoundNearest))
+    return Δω[1] < Δω[2] ? ω_t[1] : ω_t[2]
+end
+
+function coords(v::SVector{3, Float64}, d::Float64, θ::Float64)::SVector{2, Float64}
+    v = RotZ(-2θ)*LinearAlgebra.normalize(v)*d/px_size
+    return xc - v[2], yc + v[3]
+end
 
 function gauss_2D(t::Matrix, p::Vector{Float64})::Vector{Float64}
     A, x0, y0, σx, σy = p
     x = @. (t[:, 1] - x0)/σx
     y = @. (t[:, 2] - y0)/σy
-    return @. A*exp(-0.5*(x^2+y^2))
+    return @. A*exp(-(x^2+y^2)/2)
 end
 
 function fit_func(t::Matrix, p::Vector{Float64})::Vector{Float64}
     return p[1] .+ gauss_2D(t, p[2:6]) + gauss_2D(t, p[7:11])
 end
 
-using LsqFit
-
-xy_mesh = hcat(vec([x for y=y_diap, x=x_diap]), vec([y for y=y_diap, x=x_diap]))
-
-A0 = findmax(fit_data)[1]
-σ0 = init["sigma"]
-noise0 = init["noise"]
-
-g1 = [A0, peaks[1][1], peaks[1][2], σ0, σ0]
-g2 = [A0/2, peaks[2][1], peaks[2][2], σ0, σ0]
-p0 = [noise0; g1; g2]
-
-if shift_corr
-    using DSP
-    using Statistics
-
-    xcorr_data = xcorr(fit_func(xy_mesh, p0), vec(fit_data))[round(Int, length(fit_data)/2)+1 : round(Int, 3*length(fit_data)/2)+1]
-    xy_shift = 2*(xy_mesh'xcorr_data./sum(xcorr_data) - [mean(x_diap), mean(y_diap)])
-    for i in eachindex(peaks); peaks[i] -= xy_shift; end
-
-    @printf "Corr. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2]
-    @printf "Corr. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2]
-
-    g1 = [A0, peaks[1][1], peaks[1][2], σ0, σ0]
-    g2 = [A0/2, peaks[2][1], peaks[2][2], σ0, σ0]
-    p0 = [noise0; g1; g2]
+function xcorr_correction(image::Matrix{Float64}, param::Vector{Float64})::SVector{2, Float64}
+    xcorr_range = range(round(Int, length(image)/2)+1, step=1, length = length(image))
+    xcorr_data = xcorr(vec(image), fit_func(xy_mesh, param))[xcorr_range]
+    xcorr_data ./= sum(xcorr_data)
+    return 2(xy_mesh'xcorr_data - [x0, y0])
 end
 
-fit = curve_fit(fit_func, xy_mesh, vec(fit_data), p0)
-param = fit.param
-stdev = stderror(fit)
-
-@printf "Params:      Int       x0       y0     σx     σy\n"
-@printf "Fit. Ka1: %6.0lf  %7.3f  %7.3f  %5.3f  %5.3f\n" param[2] param[3] param[4] param[5]  param[6]
-@printf "Fit. Ka2: %6.0lf  %7.3f  %7.3f  %5.3f  %5.3f\n" param[7] param[8] param[9] param[10] param[11]
-@printf "Err. Ka1: %6.0lf  %7.3f  %7.3f  %5.3f  %5.3f\n" stdev[2] stdev[3] stdev[4] stdev[5]  stdev[6]
-@printf "Err. Ka2: %6.0lf  %7.3f  %7.3f  %5.3f  %5.3f\n" stdev[7] stdev[8] stdev[9] stdev[10] stdev[11]
-
-if logging
-    file = open(joinpath(init["res_folder"], "fit_log.txt"), "a")
-    write(file, "\n")
-    write(file, "$(split(init["p4p_file"], ".")[1])\n")
-    for idx in hkl; write(file, "$idx  "); end
-    write(file, "\n")
-    θ, ϕ, ω = @. rad2deg(rem2pi([θ, ϕ, ω], RoundNearest))
-    write(file, "$d\t$(2*θ)\t$ϕ\t$ω\n")
-    write(file, "$(fit.param[1])\n")
-    for g_diap in [2:6, 7:11]
-        for par in param[g_diap]; write(file, "$par\t"); end
-        write(file, "\n")  
-    end
-    for g_diap in [2:6, 7:11]
-        for err in stdev[g_diap]; write(file, "$err\t"); end
-        write(file, "\n")
-    end
-    close(file)
+function max_correction(image::Matrix{Float64}, param::Vector{Float64})::SVector{2, Float64}
+    max_ij = findmax(image)[2]
+    return x_diap[max_ij[2]] - param[3], y_diap[max_ij[1]] - param[4]
 end
 
-if drawing
-    using Plots
+experiment_counter = 0
+file = open(joinpath(init["res_folder"], "$(experiment_name)_eval.txt"), "w")
+bond_experiments = Dict{SVector{3, Int}, SVector{2, Vector{Float64}}}()
+for (meta, paths) in experiments
+    hkl, (d, θ, ω, ϕ) = meta
 
-    heatmap(x_diap, y_diap, reshape(fit.resid, size(fit_data)), aspect_ratio=:equal)
-    savefig(joinpath(init["res_folder"], "resid.png"))
+    image = zeros(rows, cols)
+    foreach(path -> image += sfrm_image(path), paths)
+    image = image[y_diap, x_diap]
+
+    noise0 = median(image)
+    image[findall(image.>threshold)] .= noise0
+    A0 = first(findmax(image))
+
+    s = RotXZ(-χ, -ϕ)*U*hkl/a
+    peaks = [coords(ray/λ + RotZ(true_ω(s, λ, ω))*s, d, θ) for λ in wl]
+
+    gen_param(noise, A, xy) = [noise, A, xy[1][1], xy[1][2], σ0, σ0, A/2, xy[2][1], xy[2][2], σ0, σ0]
+    p0 = gen_param(noise0, A0, peaks)
+
+    #xy_shift = xcorr_correction(image, p0)
+    xy_shift = max_correction(image, p0)
+    map!(peak -> peak + xy_shift, peaks, peaks)
+    p0 = gen_param(noise0, A0, peaks)
+
+    fit = try
+        curve_fit(fit_func, xy_mesh, vec(image), p0)
+    catch
+        @warn @sprintf "%4d%4d%4d fucked up\n" hkl[1] hkl[2] hkl[3]
+        curve_fit(fit_func, xy_mesh, fit_func(xy_mesh, p0), p0)
+    end
+
+    param = fit.param
+    stdev = try
+        stderror(fit)
+    catch
+        zeros(11)
+    end
+    
+    hkl in keys(bond_experiments) || (bond_experiments[hkl] = ([], []))
+    append!(bond_experiments[hkl][θ < 0 ? 1 : 2], d, θ, ω, ϕ, param)
+
+    write(file, @sprintf "h k l: %d %d %d\n" hkl[1] hkl[2] hkl[3])
+    write(file, @sprintf "d      2θ       ω       ϕ\n")
+    write(file, @sprintf "%03.0lf%8.2lf%8.2lf%8.2lf\n" d hank(2θ) hank(ω) hank(ϕ))
+    write(file, @sprintf "Pred. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2])
+    write(file, @sprintf "Pred. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2])
+    write(file, @sprintf "Noise: %.1f(%2.0f)\n" param[1] 10stdev[1])
+    write(file, @sprintf "Params:      Int            x0           y0         σx         σy\n")
+    write(file, @sprintf "Fit. Ka1: %6.0f(%03.0f)  %7.3f(%2.0f)  %7.3f(%2.0f)  %5.3f(%2.0f)  %5.3f(%2.0f)\n" param[2] stdev[2] param[3] 1e3stdev[3] param[4] 1e3stdev[4] param[5] 1e3stdev[5]  param[6] 1e3stdev[6])
+    write(file, @sprintf "Fit. Ka2: %6.0f(%03.0f)  %7.3f(%2.0f)  %7.3f(%2.0f)  %5.3f(%2.0f)  %5.3f(%2.0f)\n" param[7] stdev[7] param[8] 1e3stdev[8] param[9] 1e3stdev[9] param[10] 1e3stdev[10]  param[11] 1e3stdev[11])
+    write(file, @sprintf "\n")
+
+    @printf "written%4d%4d%4d%8.2f\n" hkl[1] hkl[2] hkl[3] hank(2θ)
+    global experiment_counter += 1
+end
+@printf "Evaluated %d experiments\n" experiment_counter
+
+write(file, "="^16*" Bond experiments "*"="^16*"\n")
+for (hkl, (neg, pos)) in bond_experiments
+    isempty(neg) | isempty(pos) && continue
+    θ_single(ex::Vector{Float64})::Float64 = ex[2] - px_size*ex[7]/2ex[1]
+    h, k, l = hkl
+    θ = (θ_single(pos) - θ_single(neg))/2
+    a_bond = wl[1]*norm(hkl)/2sin(θ)
+    write(file, @sprintf "%4d%4d%4d => %10.5f,%10.5f\n" h k l hank(2θ) a_bond)
 end
