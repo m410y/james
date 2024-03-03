@@ -1,5 +1,6 @@
 ### necessary consts
 wl = [0.70931715, 0.713607]
+chi = 54.7112
 
 ### lattice param correction
 #a = 4.156916
@@ -8,24 +9,18 @@ wl = [0.70931715, 0.713607]
 res_folder = "res"
 
 ### p4p file location
-p4p_folder = "D:\\data\\p4p"
-p4p_file = "YEu_N5.p4p"
+p4p_file = "D:\\data\\p4p\\YEu_N5.p4p"
 
 ### cif file location
-cif_folder = "D:\\data\\XRDA"
-cif_file = "YEu_N5\\YEu_N5.cif"
+cif_file = "D:\\data\\XRDAYEu_N5\\YEu_N5.cif"
 
 ### sfrm files location
-sfrm_folder = "D:\\data\\sfrm\\20240217_YEu_N3_Bond_Fridel"
-sfrm_files =  [ "mo_YEu_N3__m4_10_20_andFridels_129f_M97p5_01_0001.sfrm", "mo_YEu_N3__m4_10_20_andFridels_129f_M97p5_02_0001.sfrm" ]
+sfrm_folder = "D:\\data\\samples\\YEu_N5"
 
 
 ### checkboxes
 correct_lattice = false
 drawing = false
-check = false
-shift_corr = true
-logging = false
 
 
 ### suppose params
@@ -37,22 +32,20 @@ om_scan_range = 4.0
 
 
 ### eval params
-#peaks = [[389, 503], [402, 503]]
 x_lims = [360, 420]
 y_lims = [490, 520]
 xc = 395.50
 yc = 504.13
 sigma = 2.0
-noise = 200
+threshold = 1e5
 
 
 ### suppose consts
-chi = 54.7112
 tth_lim = 100.0
 tth_om_delta = 43.22
 
 
 ### eval consts
 rows = 1024
-cols = 786
+cols = 768
 px_size = 0.135
