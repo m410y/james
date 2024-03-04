@@ -37,21 +37,15 @@ threshold = init["threshold"]
 
 hank(ang) = rad2deg(rem2pi(ang, RoundNearest))
 
-experiments = Dict{Tuple{SVector{3, Int}, NTuple{4, Float64}}, Vector{String}}()
+experiments = Dict{Tuple{SVector{3, Int}, NTuple{3, Float64}}, Vector{String}}()
 experiment_name = split(init["sfrm_folder"], "\\")[end]
 for path in glob("*.sfrm", init["sfrm_folder"])
     meta = sfrm_meta(path)
     d, θ, ω, ϕ = meta["d"], meta["tth"]/2, meta["omega"], meta["phi"]
     hkl = round.(Int, U'RotZXZ(ϕ, χ, -ω)*(RotZ(2θ)*ray - ray)*a/wl[1])
-    ex_params = hkl, (d, θ, ω, ϕ)
+    ex_params = hkl, (d, θ, ϕ)
     ex_params in keys(experiments) || (experiments[ex_params] = [])
     push!(experiments[ex_params], path)
-end
-
-function true_ω(s::SVector{3, Float64}, λ::Float64, ω::Float64)::Float64
-    ω_t = atan(s[2], s[1])*[1, 1] - acos(-λ*norm(s)/2)*[1, -1]
-    Δω = @. abs(rem2pi(ω_t - ω, RoundNearest))
-    return Δω[1] < Δω[2] ? ω_t[1] : ω_t[2]
 end
 
 function coords(v::SVector{3, Float64}, d::Float64, θ::Float64)::SVector{2, Float64}
@@ -86,7 +80,7 @@ experiment_counter = 0
 file = open(joinpath(init["res_folder"], "$(experiment_name)_eval.txt"), "w")
 bond_experiments = Dict{SVector{3, Int}, SVector{2, Vector{Float64}}}()
 for (meta, paths) in experiments
-    hkl, (d, θ, ω, ϕ) = meta
+    hkl, (d, θ, ϕ) = meta
 
     image = zeros(rows, cols)
     foreach(path -> image += sfrm_image(path), paths)
@@ -97,7 +91,8 @@ for (meta, paths) in experiments
     A0 = first(findmax(image))
 
     s = RotXZ(-χ, -ϕ)*U*hkl/a
-    peaks = [coords(ray/λ + RotZ(true_ω(s, λ, ω))*s, d, θ) for λ in wl]
+    true_ω(s::SVector{3, Float64}, λ::Float64, θ::Float64)::Float64 = return atan(s[2], s[1]) + sign(θ)*acos(-λ*norm(s)/2)
+    peaks = [coords(ray/λ + RotZ(true_ω(s, λ, θ))*s, d, θ) for λ in wl]
 
     gen_param(noise, A, xy) = [noise, A, xy[1][1], xy[1][2], σ0, σ0, A/2, xy[2][1], xy[2][2], σ0, σ0]
     p0 = gen_param(noise0, A0, peaks)
@@ -110,7 +105,6 @@ for (meta, paths) in experiments
     fit = try
         curve_fit(fit_func, xy_mesh, vec(image), p0)
     catch
-        @warn @sprintf "%4d%4d%4d fucked up\n" hkl[1] hkl[2] hkl[3]
         curve_fit(fit_func, xy_mesh, fit_func(xy_mesh, p0), p0)
     end
 
@@ -118,34 +112,41 @@ for (meta, paths) in experiments
     stdev = try
         stderror(fit)
     catch
-        zeros(11)
+        zeros(size(param))
     end
-    
-    hkl in keys(bond_experiments) || (bond_experiments[hkl] = ([], []))
-    append!(bond_experiments[hkl][θ < 0 ? 1 : 2], d, θ, ω, ϕ, param)
+
+    if stdev[3] > 0.1 || stdev[3] == 0.0 || param[2] < 1e3
+        continue
+    end
 
     write(file, @sprintf "h k l: %d %d %d\n" hkl[1] hkl[2] hkl[3])
     write(file, @sprintf "d      2θ       ω       ϕ\n")
-    write(file, @sprintf "%03.0lf%8.2lf%8.2lf%8.2lf\n" d hank(2θ) hank(ω) hank(ϕ))
+    write(file, @sprintf "%03.0lf%8.2lf%8.2lf%8.2lf\n" d hank(2θ) hank(true_ω(s, wl[1], θ)) hank(ϕ))
     write(file, @sprintf "Pred. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2])
     write(file, @sprintf "Pred. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2])
     write(file, @sprintf "Noise: %.1f(%2.0f)\n" param[1] 10stdev[1])
     write(file, @sprintf "Params:      Int            x0           y0         σx         σy\n")
-    write(file, @sprintf "Fit. Ka1: %6.0f(%03.0f)  %7.3f(%2.0f)  %7.3f(%2.0f)  %5.3f(%2.0f)  %5.3f(%2.0f)\n" param[2] stdev[2] param[3] 1e3stdev[3] param[4] 1e3stdev[4] param[5] 1e3stdev[5]  param[6] 1e3stdev[6])
-    write(file, @sprintf "Fit. Ka2: %6.0f(%03.0f)  %7.3f(%2.0f)  %7.3f(%2.0f)  %5.3f(%2.0f)  %5.3f(%2.0f)\n" param[7] stdev[7] param[8] 1e3stdev[8] param[9] 1e3stdev[9] param[10] 1e3stdev[10]  param[11] 1e3stdev[11])
+    write(file, @sprintf "Fit. Ka1: %6.0f(%.0f)  %7.3f(%.0f)  %7.3f(%.0f)  %5.3f(%.0f)  %5.3f(%.0f)\n" param[2] stdev[2] param[3] 1e3stdev[3] param[4] 1e3stdev[4] param[5] 1e3stdev[5]  param[6] 1e3stdev[6])
+    write(file, @sprintf "Fit. Ka2: %6.0f(%.0f)  %7.3f(%.0f)  %7.3f(%.0f)  %5.3f(%.0f)  %5.3f(%.0f)\n" param[7] stdev[7] param[8] 1e3stdev[8] param[9] 1e3stdev[9] param[10] 1e3stdev[10]  param[11] 1e3stdev[11])
     write(file, @sprintf "\n")
 
     @printf "written%4d%4d%4d%8.2f\n" hkl[1] hkl[2] hkl[3] hank(2θ)
     global experiment_counter += 1
+    
+    hkl in keys(bond_experiments) || (bond_experiments[hkl] = ([], []))
+    append!(bond_experiments[hkl][θ < 0 ? 1 : 2], d, θ, ϕ, param)
 end
 @printf "Evaluated %d experiments\n" experiment_counter
 
+experiment_counter = 0
 write(file, "="^16*" Bond experiments "*"="^16*"\n")
 for (hkl, (neg, pos)) in bond_experiments
     isempty(neg) | isempty(pos) && continue
-    θ_single(ex::Vector{Float64})::Float64 = ex[2] - px_size*ex[7]/2ex[1]
+    single_θ(ex::Vector{Float64})::Float64 = ex[2] - px_size*ex[6]/2ex[1]
     h, k, l = hkl
-    θ = (θ_single(pos) - θ_single(neg))/2
+    θ = (single_θ(pos) - single_θ(neg))/2
     a_bond = wl[1]*norm(hkl)/2sin(θ)
-    write(file, @sprintf "%4d%4d%4d => %10.5f,%10.5f\n" h k l hank(2θ) a_bond)
+    write(file, @sprintf "%4d%4d%4d => %10.5f,%10.5f mul %d %d\n" h k l hank(2θ) a_bond length(neg)/14 length(pos)/14)
+    global experiment_counter += 1
 end
+@printf "Evaluated %d bond schemes\n" experiment_counter

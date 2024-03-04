@@ -9,13 +9,13 @@ chi = 54.7112
 res_folder = "res"
 
 ### p4p file location
-p4p_file = "D:\\data\\p4p\\YEu_N5.p4p"
+p4p_file = "D:\\data\\p4p\\Si_small.p4p"
 
 ### cif file location
 cif_file = "D:\\data\\XRDAYEu_N5\\YEu_N5.cif"
 
 ### sfrm files location
-sfrm_folder = "D:\\data\\samples\\YEu_N5"
+sfrm_folder = "D:\\data\\samples\\Si_small"
 
 
 ### checkboxes
