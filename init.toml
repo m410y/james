@@ -3,25 +3,22 @@ wl = [0.70931715, 0.713607]
 chi = 54.7112
 
 ### lattice param correction
-#a = 4.156916
-
+a = 5.657772
 
 res_folder = "res"
 
 ### p4p file location
-p4p_file = "D:\\data\\p4p\\Si_small.p4p"
+p4p_file = "D:\\data\\p4p\\Ge.p4p"
 
 ### cif file location
-cif_file = "D:\\data\\XRDAYEu_N5\\YEu_N5.cif"
+cif_file = "D:\\data\\cif\\Ge.cif"
 
 ### sfrm files location
-sfrm_folder = "D:\\data\\samples\\Si_small"
+sfrm_folder = "D:\\data\\samples\\Ge"
 
 
 ### checkboxes
-correct_lattice = false
-drawing = false
-
+correct_lattice = true
 
 ### suppose params
 hkl_max = 10

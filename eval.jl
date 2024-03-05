@@ -10,12 +10,16 @@ using DSP
 using Statistics
 
 include("parse.jl")
+using .Parse
 
 
 init = TOML.parsefile("init.toml")
 
-a, U = p4p_orient(init["p4p_file"])
-init["correct_lattice"] && (a = init["a"])
+init = TOML.parsefile("init.toml")
+U, A = p4p_orient(init["p4p_file"])
+init["correct_lattice"] && (A = Diagonal([init["a"], init["a"], init["a"]]))
+UB = U*inv(A)
+
 sample_name = split(split(init["p4p_file"], "\\")[end], ".")[1]
 @printf "Sample: %s\n" sample_name
 
@@ -42,7 +46,7 @@ experiment_name = split(init["sfrm_folder"], "\\")[end]
 for path in glob("*.sfrm", init["sfrm_folder"])
     meta = sfrm_meta(path)
     d, θ, ω, ϕ = meta["d"], meta["tth"]/2, meta["omega"], meta["phi"]
-    hkl = round.(Int, U'RotZXZ(ϕ, χ, -ω)*(RotZ(2θ)*ray - ray)*a/wl[1])
+    hkl = round.(Int, A*U'RotZXZ(ϕ, χ, -ω)*(RotZ(2θ)*ray - ray)/wl[1])
     ex_params = hkl, (d, θ, ϕ)
     ex_params in keys(experiments) || (experiments[ex_params] = [])
     push!(experiments[ex_params], path)
@@ -90,7 +94,7 @@ for (meta, paths) in experiments
     image[findall(image.>threshold)] .= noise0
     A0 = first(findmax(image))
 
-    s = RotXZ(-χ, -ϕ)*U*hkl/a
+    s = RotXZ(-χ, -ϕ)*UB*hkl
     true_ω(s::SVector{3, Float64}, λ::Float64, θ::Float64)::Float64 = return atan(s[2], s[1]) + sign(θ)*acos(-λ*norm(s)/2)
     peaks = [coords(ray/λ + RotZ(true_ω(s, λ, θ))*s, d, θ) for λ in wl]
 

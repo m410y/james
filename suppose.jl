@@ -6,14 +6,19 @@ using Printf
 using Combinatorics
 
 include("parse.jl")
+using .Parse
+
 include("form_factor.jl")
+using .FormFactor
 
 
 init = TOML.parsefile("init.toml")
+U, A = p4p_orient(init["p4p_file"])
+init["correct_lattice"] && (A = Diagonal([init["a"], init["a"], init["a"]]))
+UB = U*inv(A)
 
-a, U = p4p_orient(init["p4p_file"])
-init["correct_lattice"] && (a = init["a"])
-@printf "Sample: %s\n" split(init["p4p_file"], ".")[1]
+sample_name = split(split(init["p4p_file"], "\\")[end], ".")[1]
+@printf "Sample: %s\n" sample_name
 
 cell = cif_cell(init["cif_file"])
 
@@ -37,10 +42,12 @@ function process_hkl(h::Int, k::Int, l::Int)::Vector{Tuple{Bool, Bool, Float64, 
     hkl = SVector(h, k, l)
     hkl != [0, 0, 0] || return []
 
-    v = LinearAlgebra.normalize(U*hkl)
+    s = UB*hkl
+    v = normalize(s)
+    d = 1/norm(s)
+
     abs(v[3]/sin(χ)) < 1 || return []
 
-    d = a/norm(hkl)
     (λ/2d < 1) ? (θ = asin(λ/2d)) : return []
     θ_min < θ < θ_max || return []
 
@@ -66,22 +73,48 @@ function process_hkl(h::Int, k::Int, l::Int)::Vector{Tuple{Bool, Bool, Float64, 
     return result
 end
 
+function gen_hkl(r_min::Float64, r_max::Float64)::Vector{SVector{3, Int}}
+    res = Vector{SVector{3, Int}}()
+    for h in -floor(r_max):floor(r_max)
+        r1 = sqrt(r_max^2 - h^2)
+        for k in -floor(r1):floor(r1)
+            r2 = sqrt(r1^2 - k^2)
+            r3 = r_min^2 - h^2 - k^2
+            if r3 < 0
+                for l in -floor(r2):floor(r2)
+                    push!(res, SVector{3, Int}(h, k, l))
+                end
+            else
+                r3 = sqrt(r3)
+                for l in -floor(r2):-ceil(r3)
+                    push!(res, SVector{3, Int}(h, k, l))
+                end
+                for l in ceil(r3):floor(r2)
+                    push!(res, SVector{3, Int}(h, k, l))
+                end
+            end
+        end
+    end
+    return res
+end
+
 function signperm(h, k, l)
     pm = [1, -1]
     return [perm.*signs for perm in permutations([h, k, l]), signs in [[i, j, k] for i=pm, j=pm, k=pm]]
 end
 
-file = open(joinpath(init["res_folder"], split(init["p4p_file"], ".")[1]*"_suppose.txt"), "w")
-write(file, "   h   k   l   v_n   v_f    ff     2θ       ϕ     ω_0     ω_m     ω_p    ω_mf    ω_pf\n")
+file = open(joinpath(init["res_folder"], sample_name*"_suppose.txt"), "w")
+write(file, "N      h   k   l   v_n   v_f    ff     2θ       ϕ     ω_0     ω_m     ω_p    ω_mf    ω_pf\n")
 
-experiment_counter = 0
-for (h, k, l) in signperm(20, 10, 4)
+counter = 0
+r_from_θ(θ_lim::Float64)::Float64 = 2a*sin(θ_lim)/λ
+for (h, k, l) in gen_hkl(r_from_θ(θ_min), r_from_θ(θ_max))
     h < 0 && continue
     for (v_n, v_f, ff, angles) in process_hkl(h, k, l)
         θ, ϕ, ω_0, ω_m, ω_p, ω_mf, ω_pf = hank.(angles)
-        write(file, @sprintf "%4d%4d%4d%6s%6s%6.0f%7.2f%8.2f%8.2f%8.2f%8.2f%8.2f%8.2f\n" h k l v_n v_f ff 2θ ϕ ω_0 ω_m ω_p ω_mf ω_pf)
-        global experiment_counter += 1
+        global counter += 1
+        write(file, @sprintf "%04d%4d%4d%4d%6s%6s%6.0f%7.2f%8.2f%8.2f%8.2f%8.2f%8.2f%8.2f\n" counter h k l v_n v_f ff 2θ ϕ ω_0 ω_m ω_p ω_mf ω_pf)
     end
 end
 
-@printf "Supposed %d experiments\n" experiment_counter
+@printf "Supposed %d experiments\n" counter

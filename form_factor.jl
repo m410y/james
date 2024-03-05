@@ -1,3 +1,5 @@
+module FormFactor
+
 using StaticArrays
 
 file = open("form_factor.txt")
@@ -24,10 +26,13 @@ function phase_eval(hkl::SVector{3, Int}, xyz::SVector{3, Float64})::Complex
     return exp(2*pi*im*hkl'xyz)
 end
 
+export ff_eval
 function ff_eval(q::Float64, hkl::SVector{3, Int}, cell::Vector{Tuple{Tuple{String, Float64}, SVector{3, Float64}}})::Float64
     ff = 0.0
     for (atom, xyz) in cell
         ff += amp_eval(q, atom) * phase_eval(hkl, xyz)
     end
     return abs(ff)
+end
+
 end
