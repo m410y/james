@@ -107,7 +107,7 @@ file = open(joinpath(init["res_folder"], sample_name*"_suppose.txt"), "w")
 write(file, "N      h   k   l   v_n   v_f    ff     2θ       ϕ     ω_0     ω_m     ω_p    ω_mf    ω_pf\n")
 
 counter = 0
-r_from_θ(θ_lim::Float64)::Float64 = 2a*sin(θ_lim)/λ
+r_from_θ(θ_lim::Float64)::Float64 = 2A[1, 1]*sin(θ_lim)/λ
 for (h, k, l) in gen_hkl(r_from_θ(θ_min), r_from_θ(θ_max))
     h < 0 && continue
     for (v_n, v_f, ff, angles) in process_hkl(h, k, l)
