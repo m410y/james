@@ -59,17 +59,17 @@ function p4p_orient(filename::String)::Tuple{RotMatrix3{Float64}, UpperTriangula
     meta = p4p_meta(filename)
     a, b, c = parse.(Float64, meta["CELL"][1:3])
     α, β, γ = deg2rad.(parse.(Float64, meta["CELL"][4:6]))
-    bravais = meta["BRAVAIS"][1]
+    bravais = lowercase(meta["BRAVAIS"][1])
 
-    if bravais == "CUBIC"
+    if bravais == "cubic"
         A = Diagonal([a, a, a])
-    elseif bravais == "TETRAGONAL"
+    elseif bravais == "tetragonal"
         A = Diagonal([a, a, c])
-    elseif bravais == "ORTHORHOMBIC"
+    elseif bravais == "orthorhombic"
         A = Diagonal([a, b, c])
-    elseif bravais == "RHOMBOHEDRAL"
+    elseif bravais == "rhombohedral"
         A = lattice_eval(a, a, a, α, α, α)
-    elseif bravais == "HEXAGONAL"
+    elseif bravais == "hexagonal"
         A = lattice_eval(a, a, c, pi/2, pi/2, 2pi/3)
     else
         A = lattice_eval(a, b, c, α, β, γ)
