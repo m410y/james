@@ -73,28 +73,29 @@ function process_hkl(h::Int, k::Int, l::Int)::Vector{Tuple{Bool, Bool, Float64, 
     return result
 end
 
-function gen_hkl(θ_min::Float64, θ_max::Float64)::Vector{SVector{3, Int}}
+function gen_hkl(θ_min::Float64, θ_max::Float64; hpos=false)::Vector{SVector{3, Int}}
     res = Vector{SVector{3, Int}}()
     
     s_eval(θ::Float64)::Float64 = 2sin(θ)/λ
     s_min = s_eval(θ_min)
     s_max = s_eval(θ_max)
     
-    S = UB'UB
+    V = det(A)
+    S = Tuple(UB'UB[:, 3])
     Q = A*A'
-    M = Q/det(A)^2
-    N = S*det(A)^2
+    Q = Q[2,2], -Q[1,2], Q[1,1]
 
-    k_min(h::Int)::Int = ceil(Int, (Q[1,2]*h - sqrt((Q[1,1]*s_max^2 - h^2)*N[3,3]))/Q[1,1])
-    k_max(h::Int)::Int = floor(Int, (Q[1,2]*h + sqrt((Q[1,1]*s_max^2 - h^2)*N[3,3]))/Q[1,1])
-    l_min(h::Int, k::Int)::Int = ceil(Int, (-S[1,3]*h - S[2,3]*k - sqrt(S[3,3]*s_max^2 - M[2,2]*h^2 - M[1,1]*k^2 + 2M[1,2]*h*k))/S[3,3])
-    l_max(h::Int, k::Int)::Int = floor(Int, (-S[1,3]*h - S[2,3]*k + sqrt(S[3,3]*s_max^2 - M[2,2]*h^2 - M[1,1]*k^2 + 2M[1,2]*h*k))/S[3,3])
-    l_min_in(h::Int, k::Int)::Int = floor(Int, (-S[1,3]*h - S[2,3]*k - sqrt(S[3,3]*s_min^2 - M[2,2]*h^2 - M[1,1]*k^2 + 2M[1,2]*h*k))/S[3,3])
-    l_max_in(h::Int, k::Int)::Int = ceil(Int, (-S[1,3]*h - S[2,3]*k + sqrt(S[3,3]*s_min^2 - M[2,2]*h^2 - M[1,1]*k^2 + 2M[1,2]*h*k))/S[3,3])
+    k_min(h::Int)::Int =  ceil(Int, (-Q[2]*h - V*sqrt(Q[3]*S[3]*s_max^2 - S[3]*h^2))/Q[3])
+    k_max(h::Int)::Int = floor(Int, (-Q[2]*h + V*sqrt(Q[3]*S[3]*s_max^2 - S[3]*h^2))/Q[3])
+    l_min(h::Int, k::Int)::Int =  ceil(Int, (-S[1]*h - S[2]*k - sqrt(V^2*S[3]*s_max^2 - Q[1]*h^2 - 2Q[2]*h*k - Q[3]*k^2)/V)/S[3])
+    l_max(h::Int, k::Int)::Int = floor(Int, (-S[1]*h - S[2]*k + sqrt(V^2*S[3]*s_max^2 - Q[1]*h^2 - 2Q[2]*h*k - Q[3]*k^2)/V)/S[3])
+    l_min_in(h::Int, k::Int)::Int = floor(Int, (-S[1]*h - S[2]*k - sqrt(V^2*S[3]*s_min^2 - Q[1]*h^2 - 2Q[2]*h*k - Q[3]*k^2)/V)/S[3])
+    l_max_in(h::Int, k::Int)::Int =  ceil(Int, (-S[1]*h - S[2]*k + sqrt(V^2*S[3]*s_min^2 - Q[1]*h^2 - 2Q[2]*h*k - Q[3]*k^2)/V)/S[3])
 
-    h_max = floor(Int, s_max*sqrt(Q[1,1]))
-    for h in -h_max:h_max, k in k_min(h):k_max(h)
-        if S[3,3]*s_min^2 > M[2,2]*h^2 + M[1,1]*k^2 - 2M[1,2]*h*k
+    h_max = floor(Int, s_max*sqrt(Q[3]))
+    h_min = hpos ? 0 : -h_max
+    for h in h_min:h_max, k in k_min(h):k_max(h)
+        if V^2*S[3]*s_min^2 > Q[1]*h^2 + 2Q[2]*h*k + Q[3]*k^2
             foreach(l -> push!(res, (h, k, l)), l_min(h,k):l_min_in(h,k))
             foreach(l -> push!(res, (h, k, l)), l_max_in(h,k):l_max(h,k))
         else
@@ -114,8 +115,7 @@ file = open(joinpath(init["res_folder"], sample_name*"_suppose.txt"), "w")
 write(file, "N      h   k   l   v_n   v_f    ff     2θ       ϕ     ω_0     ω_m     ω_p    ω_mf    ω_pf\n")
 
 counter = 0
-for (h, k, l) in gen_hkl(θ_min, θ_max)
-    h < 0 && continue
+for (h, k, l) in gen_hkl(θ_min, θ_max, hpos=true)
     for (v_n, v_f, ff, angles) in process_hkl(h, k, l)
         θ, ϕ, ω_0, ω_m, ω_p, ω_mf, ω_pf = hank.(angles)
         global counter += 1

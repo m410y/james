@@ -8,7 +8,7 @@ a = 5.43093
 res_folder = "res"
 
 ### p4p file location
-p4p_file = "D:\\data\\p4p\\Cringe.p4p"
+p4p_file = "D:\\data\\p4p\\Si_small.p4p"
 
 ### cif file location
 cif_file = "D:\\data\\cif\\Si.cif"
@@ -22,8 +22,8 @@ correct_lattice = false
 
 ### suppose params
 hkl_max = 10
-tth_min = 30.0
-tth_max = 90.0
+tth_min = 90.0
+tth_max = 100.0
 d = 128.533
 om_scan_range = 4.0
 
