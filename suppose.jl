@@ -79,7 +79,7 @@ function gen_hkl(θ_min::Float64, θ_max::Float64; hpos=false)::Vector{SVector{3
     s_eval(θ::Float64)::Float64 = 2sin(θ)/λ
     s_min = s_eval(θ_min)
     s_max = s_eval(θ_max)
-    
+
     V = det(A)
     S = Tuple(UB'UB[:, 3])
     Q = A*A'

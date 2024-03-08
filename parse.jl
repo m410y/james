@@ -84,20 +84,23 @@ function p4p_orient(filename::String)::Tuple{RotMatrix3{Float64}, UpperTriangula
 end
 
 function parse_sym(str::String)::SVector{3, Tuple{Float64, Int, Float64}}
-    re = r"(-)?([xyz])([+-])?(\d)?\/?(\d)?"
+    re_x = r"([+-]?)([xyz])"
+    re_a = r"([+-]?\d)\/?(\d)?"
     sym = Vector{Tuple{Float64, Int, Float64}}()
-    for ex in split(str, ", ")
-        m = match(re, ex)
-        sign = isnothing(m[1]) ? 1.0 : -1.0
-        perm = Dict("x"=>1, "y"=>2, "z"=>3)[m[2]]
-        if isnothing(m[3])
-            push!(sym, (sign, perm, 0.0))
+    for ex in split(str, ",")
+        m_x = match(re_x, ex)
+        m_a = match(re_a, ex)
+        sign = isnothing(m_x[1]) ? 1.0 : -1.0
+        perm = Dict("x"=>1, "y"=>2, "z"=>3)[m_x[2]]
+        if isnothing(m_a)
+            shift_num = 0.0
+            shift_den = 1.0
         else
-            shift_sign = first(m[3]) != '-' ? 1.0 : -1.0
-            shift_num = isnothing(m[4]) ? 0.0 : parse(Float64, m[4])
-            shift_den = isnothing(m[5]) ? 1.0 : parse(Float64, m[5])
-            push!(sym, (sign, perm, shift_sign*shift_num/shift_den))
+            shift_num =  parse(Float64, m_a[1])
+            shift_den = isnothing(m_a[2]) ? 1.0 : parse(Float64, m_a[2])
         end
+        push!(sym, (sign, perm, shift_num/shift_den))
+
     end
     return SVector{3, Tuple{Float64, Int, Float64}}(sym)
 end
@@ -110,9 +113,16 @@ export cif_cell
 function cif_cell(filename::String)::Vector{Tuple{Tuple{String, Float64}, SVector{3, Float64}}}
     data = first(Cif(Path(filename))).second
     
-    symops = parse_sym.(data["_space_group_symop_operation_xyz"])
-    atoms = data["_atom_site_type_symbol"]
-
+    if "_space_group_symop_operation_xyz" in keys(data)
+        symops = parse_sym.(data["_space_group_symop_operation_xyz"])
+    elseif "_symmetry_equiv_pos_as_xyz" in keys(data)
+        symops = parse_sym.(data["_symmetry_equiv_pos_as_xyz"])
+    else
+        print("Cant parse symmetry\n")
+        symops = nothing
+    end
+    
+    atoms = data["_atom_site_type_symbl"]
     numparse(str::String)::Float64 = parse(Float64, first(split(str, "(")))
     occupancy = numparse.(data["_atom_site_occupancy"])
     xyz = numparse.(hcat(data["_atom_site_fract_x"], data["_atom_site_fract_y"], data["_atom_site_fract_z"]))
@@ -120,7 +130,7 @@ function cif_cell(filename::String)::Vector{Tuple{Tuple{String, Float64}, SVecto
     cell = Vector{Tuple{Tuple{String, Float64}, SVector{3, Float64}}}()
     for (atom, occup, coord) in zip(atoms, occupancy, eachrow(xyz))
         positions = Set{SVector{3, Float64}}()
-        for sym in symops; push!(positions, apply_sym(sym, SVector{3, Float64}(coord))); end
+        isnothing(symops) || for sym in symops; push!(positions, apply_sym(sym, SVector{3, Float64}(coord))); end
         for pos in positions; push!(cell, ((atom, occup), pos)); end
     end
     return cell

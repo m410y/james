@@ -8,10 +8,10 @@ a = 5.43093
 res_folder = "res"
 
 ### p4p file location
-p4p_file = "D:\\data\\p4p\\Si_small.p4p"
+p4p_file = "D:\\data\\p4p\\Ge.p4p"
 
 ### cif file location
-cif_file = "D:\\data\\cif\\Si.cif"
+cif_file = "D:\\data\\cif\\H2O.cif"
 
 ### sfrm files location
 sfrm_folder = "D:\\data\\samples\\Si_small"
