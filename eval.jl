@@ -45,11 +45,15 @@ experiments = Dict{Tuple{SVector{3, Int}, NTuple{3, Float64}}, Vector{String}}()
 experiment_name = split(init["sfrm_folder"], "\\")[end]
 for path in glob("*.sfrm", init["sfrm_folder"])
     meta = sfrm_meta(path)
-    d, θ, ω, ϕ = meta["d"], meta["tth"]/2, meta["omega"], meta["phi"]
+    d, θ, ω, ϕ = meta["d"], rem2pi(meta["tth"], RoundNearest)/2, meta["omega"], meta["phi"]
     hkl = round.(Int, A*U'RotZXZ(ϕ, χ, -ω)*(RotZ(2θ)*ray - ray)/wl[1])
     ex_params = hkl, (d, θ, ϕ)
     ex_params in keys(experiments) || (experiments[ex_params] = [])
     push!(experiments[ex_params], path)
+end
+
+function true_ω(s::SVector{3, Float64}, λ::Float64, θ::Float64)::Float64
+    return -atan(s[2], s[1]) + sign(θ)*acos(-λ*norm(s)/2)
 end
 
 function coords(v::SVector{3, Float64}, d::Float64, θ::Float64)::SVector{2, Float64}
@@ -59,8 +63,8 @@ end
 
 function gauss_2D(t::Matrix, p::Vector{Float64})::Vector{Float64}
     A, x0, y0, σx, σy = p
-    x = @. (t[:, 1] - x0)/σx
-    y = @. (t[:, 2] - y0)/σy
+    x = @. (t[:, 1] - x0 - 1.0)/σx
+    y = @. (t[:, 2] - y0 - 1.0)/σy
     return @. A*exp(-(x^2+y^2)/2)
 end
 
@@ -77,12 +81,25 @@ end
 
 function max_correction(image::Matrix{Float64}, param::Vector{Float64})::SVector{2, Float64}
     max_ij = findmax(image)[2]
-    return x_diap[max_ij[2]] - param[3], y_diap[max_ij[1]] - param[4]
+    return x_diap[max_ij[2]] - param[3] - 1.0, y_diap[max_ij[1]] - param[4] - 1.0
+end
+
+function peak_θ(ex::Vector{Float64}; peak=1)::Float64
+    return ex[2] - px_size*(ex[2 + 5peak] - x0)/2ex[1]
+end
+
+function lorp_correction!(ex::Vector{Float64})::Vector{Float64}
+    γ = px_size / ex[1]
+    dlnL(θ::Float64)::Float64 = (cos(6θ)-9cos(2θ))*csc(2θ)/(3+cos(4θ))
+    for peak in 1:2
+        ex[2 + 5peak] -= γ*dlnL(peak_θ(ex; peak=peak))*ex[4+5peak]^2
+    end
+    return ex
 end
 
 experiment_counter = 0
 file = open(joinpath(init["res_folder"], "$(experiment_name)_eval.txt"), "w")
-bond_experiments = Dict{SVector{3, Int}, SVector{2, Vector{Float64}}}()
+bond_experiments = Dict{Tuple{SVector{3, Int}, Float64, Float64, Float64}, SVector{2, Vector{Float64}}}()
 for (meta, paths) in experiments
     hkl, (d, θ, ϕ) = meta
 
@@ -95,7 +112,7 @@ for (meta, paths) in experiments
     A0 = first(findmax(image))
 
     s = RotXZ(-χ, -ϕ)*UB*hkl
-    true_ω(s::SVector{3, Float64}, λ::Float64, θ::Float64)::Float64 = return atan(s[2], s[1]) + sign(θ)*acos(-λ*norm(s)/2)
+    ω = true_ω(s, wl[1], θ)
     peaks = [coords(ray/λ + RotZ(true_ω(s, λ, θ))*s, d, θ) for λ in wl]
 
     gen_param(noise, A, xy) = [noise, A, xy[1][1], xy[1][2], σ0, σ0, A/2, xy[2][1], xy[2][2], σ0, σ0]
@@ -123,11 +140,18 @@ for (meta, paths) in experiments
         continue
     end
 
+    experiment = Vector{Float64}([d; θ; ω; ϕ; param])
+    lorp_correction!(experiment)
+
+    θ_bond = round(abs(θ), digits=4)
+    (hkl, d, θ_bond, ϕ) in keys(bond_experiments) || (bond_experiments[hkl, d, θ_bond, ϕ] = ([], []))
+    append!(bond_experiments[hkl, d, θ_bond, ϕ][θ < 0 ? 1 : 2], experiment)
+
     write(file, @sprintf "h k l: %d %d %d\n" hkl[1] hkl[2] hkl[3])
     write(file, @sprintf "d      2θ       ω       ϕ\n")
-    write(file, @sprintf "%03.0lf%8.2lf%8.2lf%8.2lf\n" d hank(2θ) hank(true_ω(s, wl[1], θ)) hank(ϕ))
-    write(file, @sprintf "Pred. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2])
-    write(file, @sprintf "Pred. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2])
+    write(file, @sprintf "%03.0lf%8.2lf%8.2lf%8.2lf\n" d hank(2θ) hank(ω) hank(ϕ))
+    # write(file, @sprintf "Pred. Ka1: %.2lf  %.2lf\n" peaks[1][1] peaks[1][2])
+    # write(file, @sprintf "Pred. Ka2: %.2lf  %.2lf\n" peaks[2][1] peaks[2][2])
     write(file, @sprintf "Noise: %.1f(%2.0f)\n" param[1] 10stdev[1])
     write(file, @sprintf "Params:      Int            x0           y0         σx         σy\n")
     write(file, @sprintf "Fit. Ka1: %6.0f(%.0f)  %7.3f(%.0f)  %7.3f(%.0f)  %5.3f(%.0f)  %5.3f(%.0f)\n" param[2] stdev[2] param[3] 1e3stdev[3] param[4] 1e3stdev[4] param[5] 1e3stdev[5]  param[6] 1e3stdev[6])
@@ -136,21 +160,25 @@ for (meta, paths) in experiments
 
     @printf "written%4d%4d%4d%8.2f\n" hkl[1] hkl[2] hkl[3] hank(2θ)
     global experiment_counter += 1
-    
-    hkl in keys(bond_experiments) || (bond_experiments[hkl] = ([], []))
-    append!(bond_experiments[hkl][θ < 0 ? 1 : 2], d, θ, ϕ, param)
 end
 @printf "Evaluated %d experiments\n" experiment_counter
 
 experiment_counter = 0
 write(file, "="^16*" Bond experiments "*"="^16*"\n")
-for (hkl, (neg, pos)) in bond_experiments
+for ((hkl, d, θ_bond, ϕ), (neg, pos)) in bond_experiments
     isempty(neg) | isempty(pos) && continue
-    single_θ(ex::Vector{Float64})::Float64 = ex[2] - px_size*ex[6]/2ex[1]
     h, k, l = hkl
-    θ = (single_θ(pos) - single_θ(neg))/2
+    θ = (peak_θ(pos) - peak_θ(neg))/2
     a_bond = wl[1]*norm(hkl)/2sin(θ)
-    write(file, @sprintf "%4d%4d%4d => %10.5f,%10.5f mul %d %d\n" h k l hank(2θ) a_bond length(neg)/14 length(pos)/14)
+    a_ref = A[1]
+    θ_ref = asin(wl[1]*norm(hkl)/2a_ref)
+    Δ2θ = (2θ - 2θ_ref)
+    Δa = (a_bond - a_ref)
+    write(file, @sprintf "%4d%4d%4d%8.2f%10.4f:\n" h k l d hank(2θ_ref))
+    write(file, @sprintf "    %8.2f %8.2f %6.0f %7.3f %7.3f\n" hank(2neg[2]) hank(neg[3]) neg[6] neg[7] neg[8])
+    write(file, @sprintf "    %8.2f %8.2f %6.0f %7.3f %7.3f\n" hank(2pos[2]) hank(pos[3]) pos[6] pos[7] pos[8])
+    write(file, @sprintf "    %8.5f %8.5f %8.6f %8.6f\n" hank(2θ) hank(Δ2θ) a_bond Δa)
+    write(file, "\n")
     global experiment_counter += 1
 end
 @printf "Evaluated %d bond schemes\n" experiment_counter

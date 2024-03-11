@@ -16,11 +16,11 @@ function sfrm_image(filename::String)::Matrix{Int32}
 end
 
 export sfrm_meta
-function sfrm_meta(filename::String)::Dict
-    meta = Dict{String, Float64}()
+function sfrm_meta(filename::String)::Dict{String, Any}
+    meta = Dict{String, Any}()
     header = fabio.openheader(filename).header
 
-    angles = rem2pi.(deg2rad.(parse.(Float64, split(header["ANGLES"]))), RoundNearest)
+    angles = deg2rad.(parse.(Float64, split(header["ANGLES"])))
     meta["tth"] = angles[1]
     meta["omega"] = angles[2] + 0.5*deg2rad(parse(Float64, split(header["RANGE"])[1]))
     meta["phi"] = angles[3]
@@ -30,7 +30,8 @@ function sfrm_meta(filename::String)::Dict
     meta["rows"] = parse(Float64, split(header["NROWS"])[1])
     meta["xc"] = parse(Float64, split(header["CENTER"])[1])
     meta["yc"] = parse(Float64, split(header["CENTER"])[2])
-
+    meta["sample"] = split(header["FILENAM"], r"_+")[2]
+    
     return meta
 end
 
