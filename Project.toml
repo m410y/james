@@ -1,0 +1,11 @@
+name = "James"
+uuid = "acd4c667-2c4e-4ab6-97cb-81d2cdf51461"
+authors = ["m410y <m410y@proton.me>"]
+version = "0.1.0"
+
+[deps]
+Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
