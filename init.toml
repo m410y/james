@@ -1,24 +1,22 @@
-[angles]
-theta = 0.0
-omega = 0.0
-phi = 0.0
-
-[axes]
-theta_dir = [0.0, 0.0, 1.0]
-theta_pos = [0.0, 0.0, 0.0]
-omega_dir = [0.0, 0.0, 1.0]
-omega_pos = [0.0, 0.0, 0.0]
-phi_dir = [0.0, -0.8162505322899551, -0.5776980773175249]
-phi_pos = [0.0, 0.0, 0.0]
-
-[detector]
-pos = [128.53, 52.11, 68.04]
-dirX = [0.0, -0.135, 0.0]
-dirY = [0.0, 0.0, 0.135]
-
 [beam]
+spectrum = "Mo.toml"
 pos = [0.0, 0.0, 0.0]
 dir = [1.0, 0.0, 0.0]
 
-[sample]
+[crystal]
+orient = "Ge.p4p"
+phi = 0.0
+phi_dir = [0.0, -0.816251, -0.577698]
+phi_pos = [0.0, 0.0, 0.0]
+omega = 0.0
+omega_dir = [0.0, 0.0, 1.0]
+omega_pos = [0.0, 0.0, 0.0]
 pos = [0.0, 0.0, 0.0]
+
+[detector]
+theta = 0.0
+theta_dir = [0.0, 0.0, 1.0]
+theta_pos = [0.0, 0.0, 0.0]
+pos = [128.53, 52.11, 68.04]
+dirX = [0.0, -0.135, 0.0]
+dirY = [0.0, 0.0, 0.135]

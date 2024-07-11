@@ -1,60 +1,55 @@
 module James
+export experiment_collect_from_folder, facility_state_from_init
 
 include("Parse.jl")
+
 using .Parse
-import Glob: glob
 using TOML
+import Glob: glob
 using LinearAlgebra
 using Rotations
 using StaticArrays
-
-struct CrystalOrient
-    UB::Matrix{Real} # 3x3
-end
-
-struct BeamSpectrum
-    mean::Real
-    deviation::Real
-    wl::Vector{Vector{Real}}
-end
-
-struct GoniometerAngles
-    θ::Real
-    ω::Real
-    ϕ::Real
-end
 
 struct RotationAxis
     pos::Vector{Real} # 3
     dir::Vector{Real} # 3
 end
 
-struct GoniometerAxes
-    θ::RotationAxis
-    ω::RotationAxis
-    ϕ::RotationAxis
+struct BeamSpectrum
+    material::AbstractString
+    mean::Real
+    deviation::Real
+    wl::Vector{Vector{Real}}
 end
 
-struct DetectorGeometry
-    pos::Vector{Real} # 3
-    dir::Matrix{Real} # 3x2
-end
-
-struct BeamDirection
+struct BeamGeometry
     pos::Vector{Real} # 3
     dir::Vector{Real} # 3
 end
 
-struct SamplePosition
+struct CrystalGeometry
+    angles::Vector{Real} # 2 for D8 VENTURE
+    axes::Vector{RotationAxis} # 2 for D8 VENTURE
     pos::Vector{Real} # 3
 end
 
-struct FacilityGeometry
-    angles::GoniometerAngles
-    axes::GoniometerAxes
+struct CrystalOrientation
+    UB::Matrix{Real} # 3x3
+end
+
+struct DetectorGeometry
+    angle::Real
+    axis::RotationAxis
+    pos::Vector{Real} # 3
+    dir::Matrix{Real} # 3x2
+end
+
+struct FacilityState
+    spectrum::BeamSpectrum
+    beam::BeamGeometry
+    crystal::CrystalGeometry
+    orient::CrystalOrientation
     detector::DetectorGeometry
-    beam::BeamDirection
-    sample::SamplePosition
 end
 
 struct ExperimentData
@@ -93,7 +88,7 @@ function experiment_sum(ed_vec::Vector{ExperimentData})::ExperimentData
     return ExperimentData(time, ed.range, ed.angles, ed.distance, ed.temperature, image)
 end
 
-function experiment_collect(folder::AbstractString)::Vector{ExperimentData}
+function experiment_collect_from_folder(folder::AbstractString)::Vector{ExperimentData}
     expers_files = experiment_from_sfrm.(glob("*.sfrm", folder))
     expers_to_sum = Dict{Tuple, Vector{ExperimentData}}()
     for ed in expers_files
@@ -104,6 +99,14 @@ function experiment_collect(folder::AbstractString)::Vector{ExperimentData}
     return experiment_sum.(values(expers_to_sum))
 end
 
+function beam_spectrum_from_file(filename::AbstractString, material::AbstractString)::BeamSpectrum
+    init = TOML.parsefile(filename)
+    wl = [init[material]["Ka1"] Init[material]["Ka2"]]
+    wl_mean = sum(I -> I[1]*I[2], wl) / sum(I -> I[2], wl)
+    wl_dev = 3 * abs(wl[2] - wl[1]) # 3 ~ 3σ, idk TODO: take it from config mb
+    return BeamSpectrum(material, wl_mean, wl_dev, wl)
+end
+
 function crystal_orient_from_p4p(filename::AbstractString)::CrystalOrient
     header = p4p_header(filename)
     ort1 = parse_number.(header["ORT1"])
@@ -112,67 +115,56 @@ function crystal_orient_from_p4p(filename::AbstractString)::CrystalOrient
     return CrystalOrient(transpose([ort1 ort2 ort3]))
 end
 
-function facility_geometry_from_init(filename::AbstractString)::FacilityGeometry
+function facility_state_from_init(filename::AbstractString)::FacilityState
     init = TOML.parsefile(filename)
-    angles = GoniometerAngles(
-        init["angles"]["theta"],
-        init["angles"]["omega"],
-        init["angles"]["phi"]
+    beam_init, crystal_init, detector_init = init["beam"], init["crystal"], init["detector"]
+    spec = beam_spectrum_from_file("spectrum.toml", beam_init["material"])
+    beam = BeamGeometry(
+        beam_init["pos"],
+        beam_init["dir"]
     )
-    axes = GoniometerAxes(
-        RotationAxis(init["axes"]["theta_pos"], init["axes"]["theta_dir"]),
-        RotationAxis(init["axes"]["omega_pos"], init["axes"]["omega_dir"]),
-        RotationAxis(init["axes"]["phi_pos"], init["axes"]["phi_dir"])
+    crystal = CrystalGeometry(
+        [crystal_init["phi"], crystal_init["omega"]],
+        [RotationAxis(crystal_init["phi_pos"], crystal_init["phi_dir"]),
+        RotationAxis(crystal_init["omega_pos"], crystal_init["omega_dir"])],
+        crystal_init["pos"]
     )
+    orient = crystal_orient_from_p4p(crystal_init["orient"])
     detector = DetectorGeometry(
-        init["detector"]["pos"],
-        [init["detector"]["dirX"] init["detector"]["dirY"]]
+        detector_init["theta"],
+        RotationAxis(detector_init["theta_pos"], detector_init["theta_dir"]),
+        detector_init["pos"],
+        [detector_init["dirX"] detector_init["dirY"]]
     )
-    beam = BeamDirection(
-        init["beam"]["pos"],
-        init["beam"]["dir"]
-    )
-    sample = SamplePosition(
-        init["sample"]["pos"]
-    )
-    return FacilityGeometry(angles, axes, detector, beam, sample)
-end
-
-function beam_spectrum_from_file(filename::AbstractString)::BeamSpectrum
-    init = TOML.parsefile(filename)
-    # TODO: make different spectra
-    wl = [init["Mo"]["Ka1"] Init["Mo"]["Ka2"]]
-    wl_mean = sum(I -> I[1]*I[2], wl) / sum(I -> I[2], wl)
-    wl_dev = 3 * abs(wl[2] - wl[1]) # 3 ~ 3σ, idk
-    return BeamSpectrum(wl_mean, wl_dev, wl)
+    return FacilityState(spec, beam, crystal, orient, detector)
 end
 
 # TODO: more complex linear detector area movement analysis
-function hkl_from_area(fg::FacilityGeometry, area::ReflexArea, orient::CrystalOrient, spec::BeamSpectrum)::Union{Vector{Integer}, Nothing}
-    d_0 = fg.detector.pos + fg.detector.dir * area.center
-    d = AngleAxis(2 * fg.angles.θ, fg.axes.θ ...) * d_0
-    n = normalize(d - fg.sample.pos)
-    q = (n - fg.beam.dir) / spec.mean
-    s = AngleAxis(-fg.angles.ϕ, fg.axes.ϕ ...) * AngleAxis(-fg.angles.ω, fg.axes.ω ...) * q
+function hkl_from_area(state::FacilityState, area::ReflexArea)::Union{Vector{Integer}, Nothing}
+    spectrum, beam, crystal, orient, detector = state
+    d_0 = detector.pos + detector.dir * area.center
+    d = AngleAxis(detector.angle, detector.axis.dir ...) * d_0
+    n = normalize(d - crystal.pos)
+    q = (n - beam.dir) / spectrum.mean
+    s = AngleAxis(-crystal.angles[1], crystal.axes[1] ...) * AngleAxis(-crystal.angles[2], crystal.axes[2] ...) * q
     hkl = inv(orient.UB) * s
     hkl_int = round.(hkl, RoundNearest)
-    s_int = orient.UB * hkl_int
-    iszero(hkl) && return nothing
-    return norm(s - s_int)/norm(s_int) > spec.deviation / spec.mean ? nothing : hlk_int
+    return hkl_int
 end
 
-function area_from_hkl(fg::FacilityGeometry, hkl::Vector{Integer}, orient::CrystalOrient, spec::BeamSpectrum)::ReflexArea
-    k = fg.beam.dir / spec.mean
+function area_from_hkl(state::FacilityState, hkl::Vector{Integer})::Union{ReflexArea, Nothing}
+    spectrum, beam, crystal, orient, detector = state
+    k = beam.dir / spectrum.mean
     s = orient.UB * hkl
-    q = AngleAxis(fg.angles.ω, fg.axes.ω ...) * AngleAxis(fg.angles.ϕ, fg.axes.ϕ ...) * s
-    n = AngleAxis(-2 * fg.angles.θ, fg.axes.θ ...) * normalize(k + q)
-    c = AngleAxis(-2 * fg.angles.θ, fg.axes.θ ...) * fg.sample.pos
+    q = AngleAxis(crystal.angles[2], crystal.axes[2] ...) * AngleAxis(crystal.angles[1], crystal.axes[1] ...) * s
+    n = AngleAxis(-detector.angle, detector.axis.dir ...) * normalize(k + q)
+    c = AngleAxis(-detector.angle, detector.axis.dir ...) * fg.sample.pos
     # diffracted beam intersection with detector
-    d_diff = fg.detector.pos - c
-    d_inc = d_diff - n * det([d_diff, fg.detector.dir]) / det([n, fg.detector.dir])
-    center = d_inc / fg.detector.dir # julia linalg magic
+    d_diff = detector.pos - c
+    d_inc = d_diff - n * det([d_diff, detector.dir]) / det([n, detector.dir])
+    center = d_inc / detector.dir # julia linalg magic
     # TODO: use linear approximation to eval reflex area
-    
+    return ReflexArea(center, [50, 50]) # diag is placeholder
 end
 
 end # module
