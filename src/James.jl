@@ -1,5 +1,5 @@
 module James
-export experiment_collect_from_folder, facility_state_from_init
+export experiment_collect_from_folder, facility_state_from_init, s_at_xy, s_diff_at_xy_omega
 
 include("Parse.jl")
 
@@ -11,54 +11,51 @@ using Rotations
 using StaticArrays
 
 struct RotationAxis
-    angle::Real
-    pos::Vector{Real} # 3
-    dir::Vector{Real} # 3
+    angle::Float64
+    pos::SVector{3, Float64}
+    dir::SVector{3, Float64}
 end
 
 struct BeamSpectrum
-    material::AbstractString
-    mean::Real
-    deviation::Real
-    wl::Vector{Vector{Real}}
+    material::String
+    mean::Float64
+    deviation::Float64
+    wl::Vector{Vector{Float64}}
 end
 
-struct BeamGeometry
-    pos::Vector{Real} # 3
-    dir::Vector{Real} # 3
+struct Beam
+    spec::BeamSpectrum
+    pos::SVector{3, Float64}
+    dir::SVector{3, Float64}
 end
 
-struct CrystalGeometry
-    axes::Vector{RotationAxis} # 2 for D8 VENTURE
-    pos::Vector{Real} # 3
-    orient::Matrix{Real} # 3x3
+struct Crystal
+    omega::RotationAxis
+    phi::RotationAxis
+    pos::SVector{3, Float64}
+    orient::SMatrix{3, 3, Float64}
 end
 
-struct DetectorGeometry
-    axis::RotationAxis
-    pos::Vector{Real} # 3
-    dir::Matrix{Real} # 3x2
+struct Detector
+    theta::RotationAxis
+    pos::SVector{3, Float64}
+    dir::SMatrix{3, 2, Float64}
+    shape::SVector{2, Int16}
 end
 
 struct FacilityState
-    spectrum::BeamSpectrum
-    beam::BeamGeometry
-    crystal::CrystalGeometry
-    detector::DetectorGeometry
+    beam::Beam
+    crystal::Crystal
+    detector::Detector
 end
 
 struct ExperimentData
-    time::Real
-    range::Real
-    angles::Vector{Real}
-    distance::Real
-    temperature::Real
-    image::Matrix{Real}
-end
-
-struct ReflexArea
-    center::Vector{Real} # 2
-    diag::Vector{Real} # 2
+    time::Float64
+    range::Float64
+    angles::Vector{Float64}
+    distance::Float64
+    temperature::Float64
+    image::Matrix{Int32}
 end
 
 
@@ -66,10 +63,14 @@ parse_number(str::AbstractString)::Float64 =
     parse(Float64, str)
 parse_angle(str::AbstractString)::Float64 =
     rem2pi(deg2rad(parse(Float64, str)), RoundNearest)
+
+    # TODO: remove this shit
 lazy_iterate(state::FacilityState) =
-    state.spectrum, state.beam, state.crystal, state.detector
+    state.beam, state.crystal, state.detector
 axis_rotation(axis::RotationAxis) =
     AngleAxis(axis.angle, axis.dir ...)
+inv_axis_rotation(axis::RotationAxis) =
+    AngleAxis(-axis.angle, axis.dir ...)
 
 function experiment_from_sfrm(filename::AbstractString)::ExperimentData
     header, image = sfrm_full(filename)
@@ -108,7 +109,7 @@ function beam_spectrum_from_file(filename::AbstractString)::BeamSpectrum
     return BeamSpectrum(material, wl_mean, wl_dev, wl)
 end
 
-function crystal_orient_from_p4p(filename::AbstractString)::Matrix{Real}
+function crystal_orient_from_p4p(filename::AbstractString)::SMatrix{3, 3, Float64}
     header = p4p_header(filename)
     ort1 = parse_number.(header["ORT1"])
     ort2 =  parse_number.(header["ORT2"])
@@ -119,51 +120,47 @@ end
 function facility_state_from_init(filename::AbstractString)::FacilityState
     init = TOML.parsefile(filename)
     beam_init, crystal_init, detector_init = init["beam"], init["crystal"], init["detector"]
-    spec = beam_spectrum_from_file(beam_init["spectrum"])
-    beam = BeamGeometry(
+    beam = Beam(
+        beam_spectrum_from_file(beam_init["spectrum"]),
         beam_init["pos"],
         beam_init["dir"]
     )
-    crystal = CrystalGeometry(
-        [RotationAxis(crystal_init["phi"], crystal_init["phi_pos"], crystal_init["phi_dir"]),
-        RotationAxis(crystal_init["omega"], crystal_init["omega_pos"], crystal_init["omega_dir"])],
+    crystal = Crystal(
+        RotationAxis(crystal_init["omega"], crystal_init["omega_pos"], crystal_init["omega_dir"]),
+        RotationAxis(crystal_init["phi"], crystal_init["phi_pos"], crystal_init["phi_dir"]),
         crystal_init["pos"],
         crystal_orient_from_p4p(crystal_init["orient"])
     )
-    detector = DetectorGeometry(
+    detector = Detector(
         RotationAxis(detector_init["theta"], detector_init["theta_pos"], detector_init["theta_dir"]),
         detector_init["pos"],
-        [detector_init["dirX"] detector_init["dirY"]]
+        [detector_init["dirX"] detector_init["dirY"]],
+        detector_init["shape"]
     )
-    return FacilityState(spec, beam, crystal, detector)
+    return FacilityState(beam, crystal, detector)
 end
 
-# TODO: more complex linear detector area movement analysis
-function hkl_from_area(state::FacilityState, area::ReflexArea)::Union{Vector{Int64}, Nothing}
-    spectrum, beam, crystal, detector = lazy_iterate(state)
-    d_0 = detector.pos + detector.dir * area.center
-    d = axis_rotation(detector.axis) * d_0
+function s_diff_at_xy_omega(state::FacilityState, xy::Vector)::SMatrix{3, 3, Float64}
+    beam, crystal, detector = lazy_iterate(state)
+    d_0 = detector.pos + detector.dir * xy
+    R_d = axis_rotation(detector.theta)
+    d = R_d * d_0
     n = normalize(d - crystal.pos)
-    q = (n - beam.dir) / spectrum.mean
-    s = inv(axis_rotation(crystal.axes[2]) * axis_rotation(crystal.axes[1])) * q
-    hkl = inv(crystal.orient) * s
-    hkl_int = round.(hkl, RoundNearest)
-    return hkl_int
+    N = I - n*n'
+    R_phi = inv_axis_rotation(crystal.phi)
+    v_xy = R_phi * inv_axis_rotation(crystal.omega) * N * R_d * detector.dir / beam.spec.mean
+    v_omega = R_phi * AngleAxis(crystal.omega.angle + pi/2, crystal.omega.dir ...) * (n - beam.dir) / beam.spec.mean
+    return [v_xy v_omega]
 end
 
-function area_from_hkl(state::FacilityState, hkl::Vector{Int64})::Union{ReflexArea, Nothing}
-    spectrum, beam, crystal, detector = lazy_iterate(state)
-    k = beam.dir / spectrum.mean
-    s = crystal.orient * hkl
-    q = axis_rotation(crystal.axes[2]) * axis_rotation(crystal.axes[1]) * s
-    n = inv(axis_rotation(detector.axis)) * normalize(k + q)
-    c = inv(axis_rotation(detector.axis)) * crystal.pos
-    # diffracted beam intersection with detector
-    d_diff = detector.pos - c
-    d_inc = d_diff - n * det([d_diff detector.dir]) / det([n detector.dir])
-    center = (d_inc' / detector.dir')' # julia linalg magic
-    # TODO: use linear approximation to eval reflex area
-    return ReflexArea(center, [50, 50]) # diag is placeholder
+function s_at_xy(state::FacilityState, xy::Vector)::SVector{3, Float64}
+    beam, crystal, detector = lazy_iterate(state)
+    d_0 = detector.pos + detector.dir * xy
+    d = axis_rotation(detector.theta) * d_0
+    n = normalize(d - crystal.pos)
+    q = (n - beam.dir) / beam.spec.mean
+    s = inv_axis_rotation(crystal.phi) * inv_axis_rotation(crystal.omega) * q
+    return s
 end
 
 end # module
