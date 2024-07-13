@@ -5,7 +5,7 @@ dir = [1.0, 0.0, 0.0]
 
 [crystal]
 orient = "Ge.p4p"
-omega = 0.0
+omega = 0.001
 omega_dir = [0.0, 0.0, 1.0]
 omega_pos = [0.0, 0.0, 0.0]
 phi = 0.0

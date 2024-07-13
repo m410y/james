@@ -1,5 +1,5 @@
 module James
-export experiment_collect_from_folder, facility_state_from_init, s_at_xy, s_diff_at_xy_omega
+export experiment_collect_from_folder, state_from_init, s_at_xy, s_diff_at_xy_omega
 
 include("Parse.jl")
 
@@ -43,7 +43,7 @@ struct Detector
     shape::SVector{2, Int16}
 end
 
-struct FacilityState
+struct State
     beam::Beam
     crystal::Crystal
     detector::Detector
@@ -65,7 +65,7 @@ parse_angle(str::AbstractString)::Float64 =
     rem2pi(deg2rad(parse(Float64, str)), RoundNearest)
 
     # TODO: remove this shit
-lazy_iterate(state::FacilityState) =
+lazy_iterate(state::State) =
     state.beam, state.crystal, state.detector
 axis_rotation(axis::RotationAxis) =
     AngleAxis(axis.angle, axis.dir ...)
@@ -117,7 +117,7 @@ function crystal_orient_from_p4p(filename::AbstractString)::SMatrix{3, 3, Float6
     return transpose([ort1 ort2 ort3])
 end
 
-function facility_state_from_init(filename::AbstractString)::FacilityState
+function state_from_init(filename::AbstractString)::State
     init = TOML.parsefile(filename)
     beam_init, crystal_init, detector_init = init["beam"], init["crystal"], init["detector"]
     beam = Beam(
@@ -137,23 +137,23 @@ function facility_state_from_init(filename::AbstractString)::FacilityState
         [detector_init["dirX"] detector_init["dirY"]],
         detector_init["shape"]
     )
-    return FacilityState(beam, crystal, detector)
+    return State(beam, crystal, detector)
 end
 
-function s_diff_at_xy_omega(state::FacilityState, xy::Vector)::SMatrix{3, 3, Float64}
+function s_diff_at_xy_omega(state::State, xy::Vector)::SMatrix{3, 3, Float64}
     beam, crystal, detector = lazy_iterate(state)
     d_0 = detector.pos + detector.dir * xy
     R_d = axis_rotation(detector.theta)
-    d = R_d * d_0
-    n = normalize(d - crystal.pos)
+    d = R_d * d_0 - crystal.pos
+    n = normalize(d)
     N = I - n*n'
-    R_phi = inv_axis_rotation(crystal.phi)
-    v_xy = R_phi * inv_axis_rotation(crystal.omega) * N * R_d * detector.dir / beam.spec.mean
-    v_omega = R_phi * AngleAxis(crystal.omega.angle + pi/2, crystal.omega.dir ...) * (n - beam.dir) / beam.spec.mean
-    return [v_xy v_omega]
+    v_xy = inv_axis_rotation(crystal.omega) * N * R_d * detector.dir / norm(d)
+    v_omega = cross(n - beam.dir, crystal.omega.dir)
+    diff = inv_axis_rotation(crystal.phi) * [v_xy v_omega] / beam.spec.mean
+    return diff
 end
 
-function s_at_xy(state::FacilityState, xy::Vector)::SVector{3, Float64}
+function s_at_xy(state::State, xy::Vector)::SVector{3, Float64}
     beam, crystal, detector = lazy_iterate(state)
     d_0 = detector.pos + detector.dir * xy
     d = axis_rotation(detector.theta) * d_0
