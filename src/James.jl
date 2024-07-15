@@ -1,7 +1,7 @@
 module James
 export experiment_collect_from_folder, state_from_init
 export s_at_xy, s_diff_at_xy_omega
-export xy_at_hkl_reflect_omega_near, hkl_at_xy_near
+export xy_at_hkl_near, hkl_at_xy_near
 
 include("Parse.jl")
 
@@ -178,7 +178,7 @@ function hkl_at_xy_near(state::State, xy::AbstractVector)::SVector{3, Int8}
     return round.(hkl, RoundNearest)
 end
 
-function omega_at_hkl_reflect(state::State, hkl::AbstractVector)::Union{Float64, Nothing}
+function omega_at_hkl_reflect(state::State, hkl::AbstractVector)::Union{NTuple{2, Float64}, Nothing}
     beam, crystal, _ = lazy_iterate(state)
     U = two_vec_basis(crystal.omega.dir, beam.dir)
     v_0 = axis_rotation(crystal.phi) * crystal.orient * hkl * beam.spec.mean
@@ -188,21 +188,18 @@ function omega_at_hkl_reflect(state::State, hkl::AbstractVector)::Union{Float64,
     omega_cos = -(v'v + 2 * n[1]*v[1])/(2 * sqrt(v[2]^2 + v[3]^2) * n[2])
     abs(omega_cos) > 1 && return nothing
     omega = rem2pi.((omega_0 + acos(omega_cos), omega_0 - acos(omega_cos)), RoundNearest)
-    return abs(omega[1]) < abs(omega[2]) ? omega[1] : omega[2]
+    return abs(omega[1]) < abs(omega[2]) ? omega : (omega[2], omega[1])
 end
 
-function xy_at_hkl_reflect_omega_near(state::State, hkl::AbstractVector)::Union{SVector{2, Float64}, Nothing}
+function xy_at_hkl_near(state::State, hkl::AbstractVector)::Union{SVector{2, Float64}, Nothing}
     beam, crystal, detector = lazy_iterate(state)
-    omega = omega_at_hkl_reflect(state, hkl)
-    isnothing(omega) && return nothing
-    axis = RotationAxis(omega, crystal.omega.pos, crystal.omega.dir)
-    s = axis_rotation(axis) * axis_rotation(crystal.phi) * crystal.orient * hkl
+    s = axis_rotation(crystal.omega) * axis_rotation(crystal.phi) * crystal.orient * hkl
     n = normalize(s + beam.dir / beam.spec.mean)
     n_d = inv_axis_rotation(detector.theta) * n
     m = cross(detector.dir[:, 1], detector.dir[:, 2])
     d_0 = detector.pos - crystal.pos
     d_coord = n_d * dot(d_0, m) / dot(n_d, m) - d_0
-    return (d_coord' / detector.dir')'
+    return detector.dir \ d_coord
 end
 
 end # module
