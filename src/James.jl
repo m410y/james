@@ -1,7 +1,7 @@
 module James
 export experiment_collect_from_folder, state_from_init
 export s_at_xy, s_diff_at_xy_omega
-export xy_at_hkl_reflect_omega_near, hkl_at_xy_near
+export xy_at_hkl_near, hkl_at_xy_near
 
 include("Parse.jl")
 
@@ -191,7 +191,7 @@ function omega_at_hkl_reflect(state::State, hkl::AbstractVector)::Union{NTuple{2
     return abs(omega[1]) < abs(omega[2]) ? omega : (omega[2], omega[1])
 end
 
-function xy_at_hkl_reflect_omega_near(state::State, hkl::AbstractVector)::Union{SVector{2, Float64}, Nothing}
+function xy_at_hkl_near(state::State, hkl::AbstractVector)::Union{SVector{2, Float64}, Nothing}
     beam, crystal, detector = lazy_iterate(state)
     s = axis_rotation(crystal.omega) * axis_rotation(crystal.phi) * crystal.orient * hkl
     n = normalize(s + beam.dir / beam.spec.mean)
