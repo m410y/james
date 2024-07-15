@@ -163,4 +163,9 @@ function s_at_xy(state::State, xy::Vector)::SVector{3, Float64}
     return s
 end
 
+function hkl_at_xy_nearest(state::State, xy::Vector)::SVector{3, Int8}
+    hkl = inv(state.crystal.orient) * s_at_xy(state, xy)
+    return round.(hkl, RoundNearest)
+end
+
 end # module
