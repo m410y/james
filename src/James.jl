@@ -12,7 +12,7 @@ using LinearAlgebra
 using Rotations
 using StaticArrays
 
-struct RotationAxis
+struct Axis
     angle::Float64
     pos::SVector{3, Float64}
     dir::SVector{3, Float64}
@@ -32,14 +32,14 @@ struct Beam
 end
 
 struct Crystal
-    omega::RotationAxis
-    phi::RotationAxis
+    omega::Axis
+    phi::Axis
     pos::SVector{3, Float64}
     orient::SMatrix{3, 3, Float64}
 end
 
 struct Detector
-    theta::RotationAxis
+    theta::Axis
     pos::SVector{3, Float64}
     dir::SMatrix{3, 2, Float64}
     shape::SVector{2, Int16}
@@ -51,7 +51,7 @@ struct State
     detector::Detector
 end
 
-struct ExperimentData
+struct Experiment
     time::Float64
     range::Float64
     angles::Vector{Float64}
@@ -69,34 +69,34 @@ parse_angle(str::AbstractString)::Float64 =
     # TODO: remove this shit
 lazy_iterate(state::State) =
     state.beam, state.crystal, state.detector
-axis_rotation(axis::RotationAxis) =
+axis_rotation(axis::Axis) =
     AngleAxis(axis.angle, axis.dir ...)
-inv_axis_rotation(axis::RotationAxis) =
+inv_axis_rotation(axis::Axis) =
     AngleAxis(-axis.angle, axis.dir ...)
 
-function experiment_from_sfrm(filename::AbstractString)::ExperimentData
+function experiment_from_sfrm(filename::AbstractString)::Experiment
     header, image = sfrm_full(filename)
     time = parse_number(header["CUMULAT"][1])
     range = parse_angle(header["RANGE"][1])
     angles = parse_angle.(header["ANGLES"])
     distance = 10 * parse_number(header["DISTANC"][2]) # converting to mm
     temperature = parse_number(header["LOWTEMP"][5])
-    return ExperimentData(time, range, angles, distance, temperature, image)
+    return Experiment(time, range, angles, distance, temperature, image)
 end
 
-function experiment_sum(ed_vec::Vector{ExperimentData})::ExperimentData
+function experiment_sum(ed_vec::Vector{Experiment})::Experiment
     time = sum(ed -> ed.time, ed_vec)
     image = sum(ed -> ed.image, ed_vec)
     ed = first(ed_vec) # any of these
-    return ExperimentData(time, ed.range, ed.angles, ed.distance, ed.temperature, image)
+    return Experiment(time, ed.range, ed.angles, ed.distance, ed.temperature, image)
 end
 
-function experiments_from_folder(folder::AbstractString)::Vector{ExperimentData}
+function experiments_from_folder(folder::AbstractString)::Vector{Experiment}
     expers_files = experiment_from_sfrm.(glob("*.sfrm", folder))
-    expers_to_sum = Dict{Tuple, Vector{ExperimentData}}()
+    expers_to_sum = Dict{Tuple, Vector{Experiment}}()
     for ed in expers_files
         key = (ed.angles, ed.distance, ed.range, ed.temperature)
-        haskey(expers_to_sum, key) || (expers_to_sum[key] = ExperimentData[])
+        haskey(expers_to_sum, key) || (expers_to_sum[key] = Experiment[])
         push!(expers_to_sum[key], ed)
     end
     return experiment_sum.(values(expers_to_sum))
@@ -128,18 +128,39 @@ function state_from_init(filename::AbstractString)::State
         beam_init["dir"]
     )
     crystal = Crystal(
-        RotationAxis(crystal_init["omega"], crystal_init["omega_pos"], crystal_init["omega_dir"]),
-        RotationAxis(crystal_init["phi"], crystal_init["phi_pos"], crystal_init["phi_dir"]),
+        Axis(crystal_init["omega"], crystal_init["omega_pos"], crystal_init["omega_dir"]),
+        Axis(crystal_init["phi"], crystal_init["phi_pos"], crystal_init["phi_dir"]),
         crystal_init["pos"],
         crystal_orient_from_p4p(crystal_init["orient"])
     )
     detector = Detector(
-        RotationAxis(detector_init["theta"], detector_init["theta_pos"], detector_init["theta_dir"]),
+        Axis(detector_init["theta"], detector_init["theta_pos"], detector_init["theta_dir"]),
         detector_init["pos"],
         [detector_init["dirX"] detector_init["dirY"]],
         detector_init["shape"]
     )
     return State(beam, crystal, detector)
+end
+
+function axis_from_angle_update(axis::Axis, angle::Real)::Axis
+    return Axis(angle, axis.pos, axis.dir)
+end
+
+function state_from_exp_update(state_0::State, exp::Experiment)::State
+    beam_0, crystal_0, detector_0 = lazy_iterate(state)
+    crystal = Crystal(
+        axis_from_angle_update(crystal_0.omega, exp.angles[2]),
+        axis_from_angle_update(crystal_0.phi, exp.angles[3]),
+        crystal_0.pos,
+        crystal_0.orient
+    )
+    detector = Detector(
+        axis_from_angle_update(crystal_0.theta, exp.angles[1]),
+        [exp.distance, detector_0.pos[2], detector_0.pos[3]],
+        detector_0.dir,
+        detector_0.shape
+    )
+    return State(beam_0, crystal, detector)
 end
 
 function two_vec_basis(a::AbstractVector, b::AbstractVector)::RotMatrix3
