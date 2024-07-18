@@ -61,7 +61,8 @@ function read_sfrm(file::IOStream)::Tuple{Dict{String, Vector{SubString}}, Matri
     data_merge_overflow!(data, over1, typemax(UInt8))
     data_merge_overflow!(data, over2, typemax(UInt16))
     data .+= baseline
-    return header, reshape(data, (rows, cols))[end:-1:begin, begin:end]
+    image = transpose(reshape(data, (cols, rows))[begin:end, end:-1:begin])
+    return header, image
 end
 
 end # module
