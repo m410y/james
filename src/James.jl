@@ -1,7 +1,6 @@
 module James
 export experiment_from_sfrm, experiments_from_folder, state_from_init, state_from_exp_update
-export s_at_xy, s_diff_at_xy_omega
-export xy_at_hkl_near, hkl_at_xy_near
+export hkl_at_xy_near, xy_at_hkl_near
 
 include("Parse.jl")
 
@@ -33,6 +32,7 @@ end
 
 struct Crystal
     omega::Axis
+    chi::Axis
     phi::Axis
     pos::SVector{3, Float64}
     orient::SMatrix{3, 3, Float64}
@@ -59,7 +59,6 @@ struct Experiment
     temperature::Float64
     image::Matrix{Int32}
 end
-
 
 parse_number(str::AbstractString)::Float64 =
     parse(Float64, str)
@@ -129,6 +128,7 @@ function state_from_init(filename::AbstractString)::State
     )
     crystal = Crystal(
         Axis(crystal_init["omega"], crystal_init["omega_pos"], crystal_init["omega_dir"]),
+        Axis(crystal_init["chi"], crystal_init["chi_pos"], crystal_init["chi_dir"]),
         Axis(crystal_init["phi"], crystal_init["phi_pos"], crystal_init["phi_dir"]),
         crystal_init["pos"],
         crystal_orient_from_p4p(crystal_init["orient"])
@@ -147,15 +147,16 @@ function axis_from_angle_update(axis::Axis, angle::Real)::Axis
 end
 
 function state_from_exp_update(state_0::State, exp::Experiment)::State
-    beam_0, crystal_0, detector_0 = lazy_iterate(state)
+    beam_0, crystal_0, detector_0 = lazy_iterate(state_0)
     crystal = Crystal(
         axis_from_angle_update(crystal_0.omega, exp.angles[2]),
+        axis_from_angle_update(crystal_0.chi, exp.angles[4]),
         axis_from_angle_update(crystal_0.phi, exp.angles[3]),
         crystal_0.pos,
         crystal_0.orient
     )
     detector = Detector(
-        axis_from_angle_update(crystal_0.theta, exp.angles[1]),
+        axis_from_angle_update(detector_0.theta, exp.angles[1]),
         [exp.distance, detector_0.pos[2], detector_0.pos[3]],
         detector_0.dir,
         detector_0.shape
@@ -171,34 +172,6 @@ function two_vec_basis(a::AbstractVector, b::AbstractVector)::RotMatrix3
     return [e_1 e_2 e_3]
 end
 
-function s_diff_at_xy_omega(state::State, xy::AbstractVector)::SMatrix{3, 3, Float64}
-    beam, crystal, detector = lazy_iterate(state)
-    d_0 = detector.pos + detector.dir * xy
-    R_d = axis_rotation(detector.theta)
-    d = R_d * d_0 - crystal.pos
-    n = normalize(d)
-    N = I - n*n'
-    v_xy = inv_axis_rotation(crystal.omega) * N * R_d * detector.dir / norm(d)
-    v_omega = cross(n - beam.dir, crystal.omega.dir)
-    diff = inv_axis_rotation(crystal.phi) * [v_xy v_omega] / beam.spec.mean
-    return diff
-end
-
-function s_at_xy(state::State, xy::AbstractVector)::SVector{3, Float64}
-    beam, crystal, detector = lazy_iterate(state)
-    d_0 = detector.pos + detector.dir * xy
-    d = axis_rotation(detector.theta) * d_0
-    n = normalize(d - crystal.pos)
-    q = (n - beam.dir) / beam.spec.mean
-    s = inv_axis_rotation(crystal.phi) * inv_axis_rotation(crystal.omega) * q
-    return s
-end
-
-function hkl_at_xy_near(state::State, xy::AbstractVector)::SVector{3, Int8}
-    hkl = inv(state.crystal.orient) * s_at_xy(state, xy)
-    return round.(hkl, RoundNearest)
-end
-
 function omega_at_hkl_reflect(state::State, hkl::AbstractVector)::Union{NTuple{2, Float64}, Nothing}
     beam, crystal, _ = lazy_iterate(state)
     U = two_vec_basis(crystal.omega.dir, beam.dir)
@@ -212,9 +185,35 @@ function omega_at_hkl_reflect(state::State, hkl::AbstractVector)::Union{NTuple{2
     return abs(omega[1]) < abs(omega[2]) ? omega : (omega[2], omega[1])
 end
 
+# function hkl_diff_at_xy_omega(state::State, xy::AbstractVector)::SMatrix{3, 3, Float64}
+#     beam, crystal, detector = lazy_iterate(state)
+#     d_0 = detector.pos + detector.dir * xy
+#     R_d = axis_rotation(detector.theta)
+#     d = R_d * d_0 - crystal.pos
+#     n = normalize(d)
+#     N = I - n*n'
+#     v_xy = inv_axis_rotation(crystal.omega) * N * R_d * detector.dir / norm(d)
+#     v_omega = cross(n - beam.dir, crystal.omega.dir)
+#     R_inv = inv(crystal.orient) * inv_axis_rotation(crystal.phi) * inv_axis_rotation(crystal.chi)
+#     diff = R_inv * [v_xy v_omega] / beam.spec.mean
+#     return diff
+# end
+
+function hkl_at_xy_near(state::State, xy::AbstractVector)::SVector{3, Float64}
+    beam, crystal, detector = lazy_iterate(state)
+    d_0 = detector.pos + detector.dir * xy
+    d = axis_rotation(detector.theta) * d_0
+    n = normalize(d - crystal.pos)
+    q = (n - beam.dir) / beam.spec.mean
+    s = inv_axis_rotation(crystal.phi) * inv_axis_rotation(crystal.chi) * inv_axis_rotation(crystal.omega) * q
+    hkl = inv(state.crystal.orient) * s
+    return round.(hkl, RoundNearest)
+end
+
 function xy_at_hkl_near(state::State, hkl::AbstractVector)::Union{SVector{2, Float64}, Nothing}
     beam, crystal, detector = lazy_iterate(state)
-    s = axis_rotation(crystal.omega) * axis_rotation(crystal.phi) * crystal.orient * hkl
+    R = axis_rotation(crystal.omega) * axis_rotation(crystal.chi) * axis_rotation(crystal.phi)
+    s = R * crystal.orient * hkl
     n = normalize(s + beam.dir / beam.spec.mean)
     n_d = inv_axis_rotation(detector.theta) * n
     m = cross(detector.dir[:, 1], detector.dir[:, 2])
