@@ -1,5 +1,5 @@
 module James
-export experiment_from_sfrm, experiments_from_folder, state_from_init
+export experiment_from_sfrm, experiments_from_folder, state_from_init, state_from_exp_update
 export s_at_xy, s_diff_at_xy_omega
 export xy_at_hkl_near, hkl_at_xy_near
 
