@@ -91,7 +91,7 @@ function experiment_sum(ed_vec::Vector{ExperimentData})::ExperimentData
     return ExperimentData(time, ed.range, ed.angles, ed.distance, ed.temperature, image)
 end
 
-function experiment_collect_from_folder(folder::AbstractString)::Vector{ExperimentData}
+function experiments_from_folder(folder::AbstractString)::Vector{ExperimentData}
     expers_files = experiment_from_sfrm.(glob("*.sfrm", folder))
     expers_to_sum = Dict{Tuple, Vector{ExperimentData}}()
     for ed in expers_files
