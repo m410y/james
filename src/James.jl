@@ -10,7 +10,6 @@ import Glob: glob
 using LinearAlgebra
 using Rotations
 using StaticArrays
-
 struct Axis
     angle::Float64
     pos::SVector{3, Float64}
